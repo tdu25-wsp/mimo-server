@@ -2,8 +2,6 @@ use axum::{Router, Server};
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 
-use crate::routes::share::create_share_routes;
-
 pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Mimo Server...");
 
