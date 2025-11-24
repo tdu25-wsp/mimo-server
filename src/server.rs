@@ -12,8 +12,8 @@ pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Er
         .allow_methods(vec!["GET", "POST", "PATCH", "DELETE"]);
 
     let app = Router::new()
-        .nest("/api", create_api_routes().await)
-        .nest("/share", create_share_routes().await);
+        .nest("/api", create_api_routes())
+        .nest("/share", create_share_routes());
 
     Server::bind(&addr).serve(app.layer(cors).into_make_service());
 
