@@ -1,3 +1,4 @@
+//mod.rsに機能を統合しているため、ある意味はない
 use axum::Router;
 
 pub async fn create_api_routes() -> Router {
