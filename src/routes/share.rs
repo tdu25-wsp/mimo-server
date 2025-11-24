@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{Router, extract::Path, routing::get};
 
 pub fn create_share_routes() -> Router {
     Router::new().route("/share/:id", get(handle_get_share))

@@ -5,7 +5,12 @@ use axum::{
 
 pub fn create_memo_routes() -> Router {
     Router::new()
-        .route("/memos", post(handle_create_memo).get(handle_get_memos).delete(handle_delete_memos))
+        .route(
+            "/memos",
+            post(handle_create_memo)
+                .get(handle_get_memos)
+                .delete(handle_delete_memos),
+        )
         .route("/memos/:id", get(handle_get_memo).patch(handle_update_memo))
 }
 

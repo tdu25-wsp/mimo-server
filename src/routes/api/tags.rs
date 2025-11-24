@@ -6,7 +6,10 @@ use axum::{
 pub fn create_tags_routes() -> Router {
     Router::new()
         .route("/tags", post(handle_create_tag).get(handle_get_tag_list))
-        .route("/tags/:id", patach(handle_update_tag).delete(handle_delete_tag))
+        .route(
+            "/tags/:id",
+            patach(handle_update_tag).delete(handle_delete_tag),
+        )
 }
 
 fn handle_create_tag() {
