@@ -3,6 +3,25 @@ use axum::{
     routing::{delete, get, patch, post},
 };
 
+use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
+
+#[derive(Serialize, Deserialize)]
+struct Tag {
+    TagID: String,
+    UserID: String,
+    Name: String,
+    ColorCode: String,
+
+    createdAt: DateTime<Utc>,
+    updatedAt: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Tags {
+    tags: Vec<Tag>,
+}
+
 pub fn create_tags_routes() -> Router {
     Router::new()
         .route("/tags", post(handle_create_tag).get(handle_get_tag_list))
