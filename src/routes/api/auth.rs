@@ -1,81 +1,162 @@
 use axum::{
     Router,
-    Json,
-    routing::post,
-    response::{IntoResponse, Response},
-    http::StatusCode,
+    response::{IntoResponse, Json},
+    routing::{get, post},
 };
-use serde::Deserialize;
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-// authモジュールから必要な関数と型をインポート
-use crate::auth::{self, Role};
 
-// ログインリクエストの型定義
-// フロントエンドからのリクエスト形式（user_idを使用）
+pub fn create_auth_routes() -> Router {
+    Router::new()
+        .route("/auth/login", post(handle_login))
+        .route("/auth/logout", post(handle_logout))
+        .route("/auth/me", get(handle_get_current_user))
+        .route("/auth/register", post(handle_register))
+        .route("/auth/refresh", post(issue_access_token))
+        .route("/auth/reset-password", post(handle_reset_password))
+        .route("/auth/forgot-password", post(handle_forgot_password))
+        .route("/auth/verify", post(handle_verification_code))
+        .route("/auth/verify-email", post(handle_verify_email))
+}
+
+//// ログインハンドラ
 #[derive(Deserialize)]
 struct LoginRequest {
-    user_id: String,
+    username: String,
     password: String,
 }
 
-// ログインハンドラ
-async fn login(Json(payload): Json<LoginRequest>) -> Response {
-    // TODO: ここでDB等を確認してパスワード認証を行う
-    if payload.user_id != "admin" || payload.password != "password" {
-        return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response();
-    }
+// ログイン要求を検証し、問題無い場合にリフレッシュトークンを含めて返却する
+async fn handle_login(jar: CookieJar) -> impl IntoResponse {
+    // Dummy
+    let token = "1234.1244.2141";
 
-    // 鍵の読み込み
-    // issue_access_token関数は内部でリフレッシュトークンを検証するため、
-    // 署名鍵(EncodingKey)と検証鍵(DecodingKey)の両方が必要です。
-    // ※ 実際の運用ではAppStateなどで保持し、都度読み込みは避けてください
-    let private_path = std::path::Path::new("private_key.pem");
-    let public_path = std::path::Path::new("public_key.pem"); // 検証用の公開鍵
+    // Cookieの構築
+    let cookie = Cookie::build(("refresh_token", token))
+        .path("/api/auth/refresh")
+        .http_only(true)
+        .secure(false) //開発中なのでhttpを許可
+        .same_site(SameSite::Lax)
+        .build();
 
-    let enc_key = match auth::load_signing_key(private_path) {
-        Ok(k) => k,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Signing key error: {}", e)).into_response(),
-    };
-
-    let dec_key = match auth::load_verifying_key(public_path) {
-        Ok(k) => k,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Verifying key error: {}", e)).into_response(),
-    };
-
-    // 1. リフレッシュトークンの発行
-    // ハンドラのLoginRequestをauthモジュールのLoginRequestに変換
-    let auth_req = auth::LoginRequest {
-        username: payload.user_id.clone(),
-        password: payload.password.clone(),
-    };
-
-    let refresh_token = match auth::issue_refresh_token(&auth_req, &enc_key) {
-        Ok(token) => token,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-
-    // 2. アクセストークンの発行
-    // ログイン直後のため、先ほど発行したリフレッシュトークンを使ってアクセストークンを発行します
-    // ※ ここでは例として ViewMemo 権限を付与しています
-    let access_token = match auth::issue_access_token(
-        &payload.user_id,
-        Role::ViewMemo,
-        &refresh_token,
-        &enc_key,
-        &dec_key
-    ) {
-        Ok(token) => token,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-
-    // 両方のトークンをJSONで返す
-    Json(json!({
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    })).into_response()
+    (
+        jar.add(cookie),
+        Json(json!({"message": "Login successful", "refresh_token": token})),
+    )
 }
 
-pub fn create_auth_router() -> Router {
-    Router::new()
-        .route("/login", post(login))
+async fn handle_logout(jar: CookieJar) -> impl IntoResponse {
+    // Cookieからトークンを回収した後に削除する
+    if let Some(cookie) = jar.get("refresh_token") {}
+
+    if let Some(cookie) = jar.get("access_token") {}
+
+    // TODO: Revoke tokens
+
+    (jar, Json(json!({"message": "Logout successful"})))
+}
+
+async fn handle_get_current_user(jar: CookieJar) -> impl IntoResponse {
+    // TODO: DBへの問い合わせ
+    let token = jar.get("access_token");
+    if token.is_none() {
+        return (Json(json!({"error": "Unauthorized"})));
+    }
+
+    Json(json!({
+    "user_id": "12345",
+    "username": "test_user",
+    }))
+}
+
+async fn handle_refresh(jar: CookieJar) -> impl IntoResponse {
+    let refresh_token = jar.get("refresh_token");
+    if refresh_token.is_none() {}
+
+    // TODO: Validate Token
+
+    // TODO: Issue valid access token
+    let access_token = "new_access";
+
+    let cookie = Cookie::build(("access_token", access_token))
+        .path("/api/")
+        .http_only(true)
+        .secure(false) //開発中なのでhttpを許可
+        .same_site(SameSite::Lax)
+        .build();
+
+    (
+        jar.add(cookie),
+        Json(json!({"message": "Access token issued"})),
+    )
+}
+
+//// ユーザ登録ハンドラ
+#[derive(Deserialize)]
+struct RegisterRequest {
+    email: String,
+    password: String,
+}
+
+async fn handle_register(jar: CookieJar, req: Json<RegisterRequest>) -> impl IntoResponse {
+    let register_token = jar.get("register_token");
+    if register_token.is_none() {
+        return (
+            jar,
+            Json(json!({"error": "Unauthorized! Please start registration again"})),
+        );
+    }
+
+    // TODO: Validate registration token
+    // TODO: Create user in DB
+    // TODO: Revoke registration token
+    (
+        jar.remove(Cookie::from("register_token")),
+        Json(json!({"message": "Registration successful"})),
+    )
+}
+
+async fn issue_access_token(jar: CookieJar) -> impl IntoResponse {
+    let refresh_token = jar.get("refresh_token");
+    if refresh_token.is_none() {
+        return (
+            jar,
+            Json(json!({"error": "Unauthorized! Please login again"})),
+        );
+    }
+
+    let access_token = "new_access_token";
+    let cookie = Cookie::build(("access_token", access_token))
+        .path("/api/")
+        .http_only(true)
+        .secure(false) //開発中なのでhttpを許可
+        .same_site(SameSite::Lax)
+        .build();
+
+    (
+        jar.add(cookie),
+        Json(json!({"message": "Access token issued"})),
+    )
+}
+
+async fn handle_reset_password() {
+    // Implementation here
+    todo!()
+}
+
+async fn handle_forgot_password() {
+    // Implementation here
+    todo!()
+}
+
+async fn handle_verification_code() {
+    // Implementation here
+    todo!()
+}
+
+async fn handle_verify_email() {
+    // Implementation here
+    todo!()
 }

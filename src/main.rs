@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 mod routes;
 mod server;
-mod auth;
+mod memo_models;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

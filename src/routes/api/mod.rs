@@ -1,11 +1,22 @@
-mod ai;
+use axum::Router;
+
 mod auth;
-mod memos;
+mod memo;
 mod settings;
+mod sum;
 mod tags;
 
-pub use ai::create_ai_router;
-pub use auth::create_auth_router;
-pub use memos::create_memo_router;
-pub use settings::create_settings_router;
-pub use tags::create_tag_router;
+use auth::create_auth_routes;
+use memo::create_memo_routes;
+use settings::create_settings_routes;
+use sum::create_sum_routes;
+use tags::create_tags_routes;
+
+pub fn create_api_routes() -> Router {
+    Router::new()
+        .merge(create_auth_routes())
+        .merge(create_sum_routes())
+        .merge(create_memo_routes())
+        .merge(create_tags_routes())
+        .merge(create_settings_routes())
+}
