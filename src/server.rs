@@ -4,9 +4,8 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer; // Axum 0.8で必要
+use tower_http::cors::CorsLayer; 
 
-// エラーになっていた関数インポートを追加
 use crate::routes::{create_api_routes, create_share_routes};
 
 pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +21,6 @@ pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Er
         )
         .allow_origin(format!("http://{}", addr).parse::<HeaderValue>().unwrap())
         .allow_origin(format!("https://{}", addr).parse::<HeaderValue>().unwrap())
-        // 文字列の "GET" だとエラーになるため、Method::GET に修正
         .allow_methods(vec![
             Method::GET,
             Method::POST,
