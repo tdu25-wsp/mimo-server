@@ -8,8 +8,9 @@ use axum_extra::extract::cookie::CookieJar;
 
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use serde_json::{de, json};
+use serde_json::json;
 
+use crate::memo_models::*;
 
 pub fn create_memo_routes() -> Router {
     Router::new()
@@ -19,42 +20,16 @@ pub fn create_memo_routes() -> Router {
                 .get(handle_get_memos)
                 .delete(handle_delete_memos),
         )
-        .route("/memos/:id", get(handle_get_memo).patch(handle_update_memo))
+        .route("/memos/{capture}", get(handle_get_memo).patch(handle_update_memo))
 }
 
-//// データ構造定義
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Memo {
-    memo_id: String,
-    content: String,
-
-    user_id: String,
-    tag_id: String,
-    auto_tag_id: String,
-    manual_tag_id: Option<String>,
-
-    share_url_token: Option<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-
+//// 定義
 #[derive(Deserialize)]
 struct MemoCreateRequest {
     content: String,
     tag_id: Option<String>,
 }
 
-#[derive(Deserialize, Serialize)]
-struct MemoList {
-    memos: Vec<Memo>,
-}
-
-#[derive(Deserialize)]
-struct MemoRequest {
-    memo_id: Vec<String>,
-}
-    
 
 //// ハンドラ関数
 async fn handle_create_memo(jar: CookieJar, req: extract::Json<MemoCreateRequest>) -> impl IntoResponse {
