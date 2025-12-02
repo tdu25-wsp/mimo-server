@@ -15,7 +15,11 @@ pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Er
     println!("Configuring CORS...");
     let cors = CorsLayer::new()
         .allow_origin("https://mimo.shuta.me".parse::<HeaderValue>().unwrap())
-        .allow_origin(format!("http://localhost{}", addr.port()).parse::<HeaderValue>().unwrap())
+        .allow_origin(
+            format!("http://localhost{}", addr.port())
+                .parse::<HeaderValue>()
+                .unwrap(),
+        )
         .allow_origin(format!("http://{}", addr).parse::<HeaderValue>().unwrap())
         .allow_origin(format!("https://{}", addr).parse::<HeaderValue>().unwrap())
         // 文字列の "GET" だとエラーになるため、Method::GET に修正

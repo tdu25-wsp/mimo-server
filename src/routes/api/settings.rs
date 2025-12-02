@@ -4,8 +4,10 @@ use axum::{
 };
 
 pub fn create_settings_routes() -> Router {
-    Router::new()
-        .route("/settings", get(handle_get_settings).patch(handle_update_settings))
+    Router::new().route(
+        "/settings",
+        get(handle_get_settings).patch(handle_update_settings),
+    )
 }
 
 async fn handle_get_settings() -> &'static str {

@@ -1,13 +1,13 @@
 use axum::{
-    Router, extract, routing::{delete, get, patch, post},
+    Router, extract,
     response::{IntoResponse, Json},
+    routing::{delete, get, patch, post},
 };
 
 use axum_extra::extract::CookieJar;
-use serde::{Deserialize, Serialize, de};
-use serde_json::{json, Value};
 use chrono::{DateTime, Utc};
-
+use serde::{Deserialize, Serialize, de};
+use serde_json::{Value, json};
 
 #[derive(Serialize, Deserialize)]
 struct Tags {
@@ -49,9 +49,12 @@ struct CreateTagRequest {
     color_code: String,
 }
 
-async fn handle_create_tag(jar: CookieJar, req: extract::Json<CreateTagRequest>) -> impl IntoResponse {
+async fn handle_create_tag(
+    jar: CookieJar,
+    req: extract::Json<CreateTagRequest>,
+) -> impl IntoResponse {
     // TODO: Write tag to DB
-    
+
     Json(json!({
         "message": "Tag created successfully",
         "tag": Tag {
