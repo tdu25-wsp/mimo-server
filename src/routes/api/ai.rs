@@ -1,6 +1,7 @@
 use axum::{
     Router,
     routing::{get, post},
+    response::{IntoResponse, Json},
 };
 
 pub fn create_ai_routes() -> Router {
@@ -9,12 +10,12 @@ pub fn create_ai_routes() -> Router {
         .route("/ai/journaling", post(create_journal))
 }
 
-fn summarize_memo() {
+async fn summarize_memo() -> impl IntoResponse {
     // Implementation here
     todo!()
 }
 
-fn create_journal() {
+async fn create_journal() -> impl IntoResponse {
     // Implementation here
     todo!()
 }

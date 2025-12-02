@@ -1,21 +1,13 @@
 use axum::{
-    Router,
-    routing::{delete, get, patch, post},
+    Router, extract, routing::{delete, get, patch, post},
+    response::{IntoResponse, Json},
 };
 
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
+use serfe_json::{json, Value};
 use chrono::{DateTime, Utc};
 
-#[derive(Serialize, Deserialize)]
-struct Tag {
-    TagID: String,
-    UserID: String,
-    Name: String,
-    ColorCode: String,
-
-    createdAt: DateTime<Utc>,
-    updatedAt: DateTime<Utc>,
-}
 
 #[derive(Serialize, Deserialize)]
 struct Tags {
@@ -27,26 +19,57 @@ pub fn create_tags_routes() -> Router {
         .route("/tags", post(handle_create_tag).get(handle_get_tag_list))
         .route(
             "/tags/:id",
-            patach(handle_update_tag).delete(handle_delete_tag),
+            patch(handle_update_tag).delete(handle_delete_tag),
         )
 }
 
-fn handle_create_tag() {
+//// ハンドラ関数
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Tag {
+    tag_id: String,
+    user_id: String,
+    name: String,
+    color_code: String,
+
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateTagRequest {
+    name: String,
+    color_code: String,
+}
+
+async fn handle_create_tag(jar: CookieJar, req: extract::Json<CreateTagRequest>) -> impl IntoResponse {
+    
+    Json(json!({
+        "message": "Tag created successfully",
+        "tag": Tag {
+            tag_id: "tag_123".to_string(),
+            user_id: "user_456".to_string(),
+            name: req.name.clone(),
+            color_code: req.color_code.clone(),
+            created_at: Utc::now(),
+            updated_at: Utc::now()
+            }
+        }
+    ))
+}
+
+async fn handle_get_tag_list() -> impl IntoResponse {
     // Implementation here
     todo!()
 }
 
-fn handle_get_tag_list() {
+async fn handle_update_tag() -> impl IntoResponse {
     // Implementation here
     todo!()
 }
 
-fn handle_update_tag() {
-    // Implementation here
-    todo!()
-}
-
-fn handle_delete_tag() {
+async fn handle_delete_tag() -> impl IntoResponse {
     // Implementation here
     todo!()
 }

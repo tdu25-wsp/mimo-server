@@ -50,10 +50,11 @@ async fn handle_login(jar: CookieJar) -> impl IntoResponse  {
 
 async fn handle_logout(jar: CookieJar) -> impl IntoResponse {
     // Cookieからトークンを回収した後に削除する
-    let refresh_token = jar.get("refresh_token");
-    let access_token = jar.get("access_token");
-    jar.remove(refresh_token.unwrap());
-    jar.remove(access_token.unwrap());
+    if let Some(cookie) = jar.get("refresh_token") {
+    }
+
+    if let Some(cookie) = jar.get("access_token") {
+    }
 
     // TODO: Revoke tokens
 
@@ -64,39 +65,61 @@ async fn handle_get_current_user(jar: CookieJar) -> impl IntoResponse {
     // TODO: DBへの問い合わせ
     let token = jar.get("access_token");
     if token.is_none() {
-        return (jar, Json(json!({"error": "Unauthorized"})));
+        return (Json(json!({"error": "Unauthorized"})));
     }
 
-    (Json(json!({"DisplayName": "John Doe"})))
+    Json(json!({
+        "user_id": "12345",
+        "username": "test_user",
+        })
+    )
 }
 
 async fn handle_refresh(jar: CookieJar) -> impl IntoResponse {
     let refresh_token = jar.get("refresh_token");
     if refresh_token.is_none() {
-        return (jar, Json(json!({"error": "Unauthorized"})));
     }
 
     // TODO: Validate Token
  
 
     // TODO: Issue valid access token
-    access_token = "new_access"
+    let access_token = "new_access";
+
+    let cookie = Cookie::build(("access_token", access_token))
+        .path("/api/")
+        .http_only(true)
+        .secure(false) //開発中なのでhttpを許可
+        .same_site(SameSite::Lax)
+        .build();
+
+    (
+        jar.add(cookie),
+        Json(json!({"message": "Access token issued"}))
+    )
+
 }
 
 //// ユーザ登録ハンドラ
 #[derive(Deserialize)]
 struct RegisterRequest {
     email: String,
+    password: String,
 }
 
-async fn handle_register(req: Json<RegisterRequest>, jar: CookieJar) -> impl IntoResponse {
+async fn handle_register(jar: CookieJar, req: Json<RegisterRequest>) -> impl IntoResponse {
     let register_token = jar.get("register_token");
     if register_token.is_none() {
-        return (jar, Json(json!({"error": "Unauthorized! Please start registration again"}
-    )));
+        return (jar, Json(json!({"error": "Unauthorized! Please start registration again"})));
+    }
 
-
-
+    // TODO: Validate registration token
+    // TODO: Create user in DB
+    // TODO: Revoke registration token
+    (
+        jar.remove(Cookie::from("register_token")),
+        Json(json!({"message": "Registration successful"}))
+    )
 }
 
 async fn issue_access_token(jar: CookieJar) -> impl IntoResponse {
@@ -104,6 +127,19 @@ async fn issue_access_token(jar: CookieJar) -> impl IntoResponse {
     if refresh_token.is_none() {
         return (jar, Json(json!({"error": "Unauthorized! Please login again"})));
     }
+
+    let access_token = "new_access_token";
+    let cookie = Cookie::build(("access_token", access_token))
+        .path("/api/")
+        .http_only(true)
+        .secure(false) //開発中なのでhttpを許可
+        .same_site(SameSite::Lax)
+        .build();
+
+    (
+        jar.add(cookie),
+        Json(json!({"message": "Access token issued"}))
+    )
 }
 
 async fn handle_reset_password() {
@@ -125,3 +161,4 @@ async fn handle_verify_email() {
     // Implementation here
     todo!()
 }
+

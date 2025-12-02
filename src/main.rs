@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 
 mod routes;
-mod api;
 mod server;
 
 #[tokio::main]
