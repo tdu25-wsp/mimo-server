@@ -28,14 +28,14 @@ pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Er
             Method::DELETE,
         ]);
 
-    print!("Creating routes...\n");
+    println!("Creating routes...");
     let app = Router::new()
         .nest("/api", create_api_routes())
         .nest("/share", create_share_routes())
         .layer(cors);
 
     let listener = TcpListener::bind(addr).await?;
-    print!("Server is running on http://{}\n", addr);
+    println!("Server is running on http://{}", addr);
     axum::serve(listener, app).await?;
 
     Ok(())
