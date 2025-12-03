@@ -3,8 +3,8 @@ FROM rust:alpine AS builder
 #RUN apk add --no-cache musl-dev openssl-dev pkgconfig
 RUN apk add --no-cache musl-dev
 WORKDIR /usr/src/mimo-server
-COPY Cargo.toml Cargo.lock ./
-# 依存関係をキャッシュするために仮ビルトを実施
+COPY Cargo.toml ./
+# 依存関係をキャッシュするために仮ビルドを実施
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
