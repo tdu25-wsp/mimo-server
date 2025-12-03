@@ -3,8 +3,18 @@ name: Docker Image CI
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Dockerfile'
+      - '.github/workflows/docker-publish.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Dockerfile'
+      - '.github/workflows/docker-publish.yml'
 
 env:
   REGISTRY: ghcr.io
