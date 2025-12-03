@@ -1,0 +1,61 @@
+services:
+  mimo-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mimo-server:latest
+    container_name: mimo-server
+    ports:
+      - "5050:5050"
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://mimo:mimo_password@postgres:5432/mimo_db
+      - MONGODB_URI=mongodb://mimo:mimo_password@mongodb:27017/mimo_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    # volumes:
+    #   - ./data:/app/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mimo-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=mimo
+      - POSTGRES_PASSWORD=mimo_password
+      - POSTGRES_DB=mimo_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mimo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: mimo-mongodb
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mimo
+      - MONGO_INITDB_ROOT_PASSWORD=mimo_password
+      - MONGO_INITDB_DATABASE=mimo_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mongodb_data:
