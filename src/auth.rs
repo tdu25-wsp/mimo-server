@@ -48,8 +48,8 @@ pub fn load_verifying_key(path: &Path) -> Result<DecodingKey> {
 //////
 //JWTの実装
 
-// ログインリクエスト構造体（追加）
-#[derive(Debug, Serialize, Deserialize)]
+// ログインリクエスト構造体
+#[derive(Debug,  Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -85,9 +85,8 @@ pub struct JWT_Claim {
     iss: String, // JWT issuer
     aud: String, // JWTを行使する対象(APIサーバのURL)
     sub: String, // User ID
-    // jti: String, // JWT ID (今回は必須要件ではないため省略可能ですが、必要なら復活させます)
-    // nbf: usize, // not before (今回はiatで代用または省略)
-    iat: usize, // 発行日時 (Issued At) - 追加
+    jti: String, // JWT ID
+    nbf: usize, // not before ここで指定した日時以前のリクエストは拒否
     exp: usize, // 有効期限
 
     typ: TokenType, // トークンの種別
@@ -110,6 +109,7 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
         aud: "mimo-client".to_string(),
         sub: req.username.clone(),
         iat: now.timestamp() as usize,
+        nbf: now.timestamp() as usize,
         exp: expiration.timestamp() as usize,
         typ: TokenType::Refresh,
         role: None, // リフレッシュトークンには権限を付与しない
