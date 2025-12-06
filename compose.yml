@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mimo-server:latest
+    image: ghcr.io/tdu25-wsp/mimo-server:latest
     container_name: mimo-server
     ports:
       - "5050:5050"
