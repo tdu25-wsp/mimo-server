@@ -1,0 +1,15 @@
+# This is sample config
+[database.postgres]
+connection_url = "postgresql://mimo:mimo_password@localhost:5432"
+db_name = "mimo_db"
+
+[database.mongodb]
+connection_uri = "mongodb://mimo:mimo_password@localhost:27017"
+db_name = "mimo_db"
+
+[server]
+host = "127.0.0.1"
+port = 5050
+
+[logging]
+level = "info"

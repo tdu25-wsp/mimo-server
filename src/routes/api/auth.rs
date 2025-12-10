@@ -102,12 +102,12 @@ struct RegisterRequest {
 
 async fn handle_register(jar: CookieJar, req: Json<RegisterRequest>) -> impl IntoResponse {
     let register_token = jar.get("register_token");
-    if register_token.is_none() {
+    /* if register_token.is_none() {
         return (
             jar,
             Json(json!({"error": "Unauthorized! Please start registration again"})),
         );
-    }
+    } */
 
     // TODO: Validate registration token
     // TODO: Create user in DB
