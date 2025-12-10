@@ -85,6 +85,7 @@ pub struct JWT_Claim {
     iss: String, // JWT issuer
     aud: String, // JWTを行使する対象(APIサーバのURL)
     sub: String, // User ID
+    iat: usize, // issued at 発行日時
     jti: String, // JWT ID
     nbf: usize, // not before ここで指定した日時以前のリクエストは拒否
     exp: usize, // 有効期限
