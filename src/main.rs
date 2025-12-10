@@ -6,7 +6,7 @@ mod memo_models;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr: SocketAddr = "127.0.0.1:5050"
+    let addr: SocketAddr = "0.0.0.0:5050"
         .parse()
         .map_err(|e| format!("Failed to parse SocketAddr: {}", e))?;
 
