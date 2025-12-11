@@ -41,7 +41,7 @@ pub async fn start_server(
     println!("Creating routes...");
     let app = Router::new()
         .nest("/api", create_api_routes(memo_service))
-        .merge(create_share_routes())
+        .nest("/share", create_share_routes())
         .layer(cors);
 
     let listener = TcpListener::bind(addr).await?;
