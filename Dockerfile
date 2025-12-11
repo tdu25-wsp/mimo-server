@@ -1,7 +1,5 @@
 # ビルドステージ
-FROM rust:alpine AS builder
-#RUN apk add --no-cache musl-dev openssl-dev pkgconfig
-RUN apk add --no-cache musl-dev
+FROM rust:1.83-bookworm AS builder
 WORKDIR /usr/src/mimo-server
 COPY Cargo.toml ./
 # 依存関係をキャッシュするために仮ビルドを実施
@@ -14,10 +12,14 @@ COPY src ./src
 RUN cargo build --release
 
 # プロダクションステージ
-FROM alpine:latest
+FROM debian:bookworm-slim
 WORKDIR /app
-RUN apk add --no-cache openssl ca-certificates tzdata
-RUN addgroup -S mimo-group && adduser -S mimo-user -G mimo-group
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata && \
+    rm -rf /var/lib/apt/lists/*
+RUN groupadd -r mimo-group && useradd -r -g mimo-group mimo-user
 USER mimo-user:mimo-group
 COPY --from=builder /usr/src/mimo-server/target/release/mimo-server /app/mimo-server
 EXPOSE 5050
