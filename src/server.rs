@@ -17,7 +17,12 @@ pub async fn start_server(addr: SocketAddr, memo_service: Arc<MemoService>) -> R
     let cors = CorsLayer::new()
         .allow_origin("https://mimo.shuta.me".parse::<HeaderValue>().unwrap())
         .allow_origin(
-            format!("http://localhost{}", addr.port())
+            format!("http://localhost:{}", addr.port())
+                .parse::<HeaderValue>()
+                .unwrap(),
+        )
+        .allow_origin(
+            format!("http://127.0.0.1:{}", addr.port())
                 .parse::<HeaderValue>()
                 .unwrap(),
         )
@@ -33,7 +38,7 @@ pub async fn start_server(addr: SocketAddr, memo_service: Arc<MemoService>) -> R
     println!("Creating routes...");
     let app = Router::new()
         .nest("/api", create_api_routes(memo_service))
-        .nest("/share", create_share_routes())
+        .nest("", create_share_routes())
         .layer(cors);
 
     let listener = TcpListener::bind(addr).await?;
