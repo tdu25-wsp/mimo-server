@@ -3,12 +3,14 @@ use axum::{
     http::{HeaderValue, Method},
 };
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer; 
 
 use crate::routes::{create_api_routes, create_share_routes};
+use crate::services::MemoService;
 
-pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_server(addr: SocketAddr, memo_service: Arc<MemoService>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting Mimo Server...");
 
     println!("Configuring CORS...");
@@ -30,7 +32,7 @@ pub async fn start_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Er
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/api", create_api_routes())
+        .nest("/api", create_api_routes(memo_service))
         .nest("/share", create_share_routes())
         .layer(cors);
 

@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::json;
 use chrono::{DateTime, Utc};
 
-use crate::memo_models::*;
+use crate::repositories::MemoList;
 
 pub fn create_sum_routes() -> Router {
     Router::new()
