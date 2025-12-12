@@ -16,6 +16,12 @@ pub struct AISummary {
     pub is_auto_generated: bool,
 }
 
+// Wrapper for a list of AI summaries
+#[derive(Serialize, Deserialize)]
+pub struct SummaryList {
+    pub summaries: Vec<AISummary>,
+}
+
 #[async_trait]
 // Summary repository trait
 pub trait SummaryRepository: Send + Sync {

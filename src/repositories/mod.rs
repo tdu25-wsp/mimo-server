@@ -3,11 +3,11 @@ mod user;
 pub mod summary; // Added summary module
 
 pub use memo::{
-    Memo, MemoList, MemoRequest, MemoCreateRequest, AISummary,
+    Memo, MemoList, MemoRequest, MemoCreateRequest, // deleted MemoUpdateRequest
     MemoRepository,
 };
 pub use user::{User, UserRepository};
-pub use summary::{AISummary, SummaryRepository}; // Re-exporting AISummary and SummaryRepository
+pub use summary::{AISummary, SummaryRepository, SummaryList}; // Re-exporting AISummary, SummaryRepository, and SummaryList
 
 // MongoDB implementation
 use mongodb::{bson::doc, Collection, Database};

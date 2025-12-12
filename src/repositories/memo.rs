@@ -34,15 +34,6 @@ pub struct MemoCreateRequest {
     pub content: String,
 }
 
-// AI Summarization
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AISummary {
-    pub user_id: String,
-    pub memo_id: Vec<String>,
-    pub content: String,
-}
-
 #[async_trait::async_trait]
 pub trait MemoRepository: Send + Sync {
     async fn find_by_id(&self, memo_id: &str) -> Result<Option<Memo>>;
