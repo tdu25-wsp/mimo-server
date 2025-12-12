@@ -13,12 +13,15 @@ use settings::create_settings_routes;
 use sum::create_sum_routes;
 use tags::create_tags_routes;
 
-use crate::services::MemoService;
+use crate::services::{MemoService, SummaryService}; // Import SummaryService
 
-pub fn create_api_routes(memo_service: Arc<MemoService>) -> Router {
+pub fn create_api_routes(
+    memo_service: Arc<MemoService>,
+    summary_service: Arc<SummaryService>,// Added SummaryService parameter
+) -> Router {
     Router::new()
         .merge(create_auth_routes())
-        .merge(create_sum_routes())
+        .merge(create_sum_routes(summary_service)) // 引数渡し
         .merge(create_memo_routes(memo_service))
         .merge(create_tags_routes())
         .merge(create_settings_routes())

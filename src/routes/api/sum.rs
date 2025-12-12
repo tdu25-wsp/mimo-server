@@ -10,10 +10,20 @@ use chrono::{DateTime, Utc};
 
 use crate::repositories::MemoList;
 
-pub fn create_sum_routes() -> Router {
+// サービスをStateとして持つためのAppState定義が必要ですが、
+// 既存構造に合わせてクロージャで注入する形にします。
+// そのため create_sum_routes のシグネチャを変更します。
+
+pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
     Router::new()
-        .route("/sum/summarize", post(summarize_memo))
-        .route("/sum/journaling", get(get_journal))
+        .route("/sum/summarize", {
+            let service = service.clone();
+            post(move |jar, json| summarize_memo(jar, service.clone(), json))
+        })
+        .route("/sum/journaling", {
+            let service = service.clone();
+            get(move |jar| get_journal(jar, service.clone()))
+        })
         .route("/sum/journaling-freq", get(set_frequency))
         .route("/sum/journaling-freq", patch(update_frequency))
 }

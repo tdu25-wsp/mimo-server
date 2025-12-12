@@ -48,6 +48,19 @@ impl MemoService {
         self.memo_repo.create(memo).await
     }
 
+    // メモの更新機能
+    pub async fn update_content(&self, memo_id: &str, new_content: String) -> Result<Memo> { 
+        let mut memo = self.find_by_id(memo_id).await?;
+        
+        if new_content.trim().is_empty() { 
+            return Err(AppError::ValidationError("Content cannot be empty".into()));
+        }
+
+        memo.content = new_content;
+        memo.updated_at = Utc::now();
+
+        self.memo_repo.update(memo).await
+    }
     pub async fn delete(&self, memo_id: &str) -> Result<()> {
         // 存在確認
         self.find_by_id(memo_id).await?;
