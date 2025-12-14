@@ -10,9 +10,6 @@ use chrono::{DateTime, Utc};
 
 use crate::repositories::MemoList;
 
-// サービスをStateとして持つためのAppState定義が必要ですが、
-// 既存構造に合わせてクロージャで注入する形にします。
-// そのため create_sum_routes のシグネチャを変更します。
 
 pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
     Router::new()

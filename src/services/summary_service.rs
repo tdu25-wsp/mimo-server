@@ -8,11 +8,16 @@ use crate::{
 
 pub struct SummaryService {
     summary_repo: Arc<MongoSummaryRepository>,
+    memo_repo: Arc<MongoMemoRepository>,
 }
 
 impl SummaryService {
-    pub fn new(summary_repo: Arc<MongoSummaryRepository>) -> Self {
-        Self { summary_repo }
+    // コンストラクタで memo_repo も受け取る
+    pub fn new(
+        summary_repo: Arc<MongoSummaryRepository>, 
+        memo_repo: Arc<MongoMemoRepository> 
+    ) -> Self {
+        Self { summary_repo, memo_repo }
     }
 
     // ユーザーのジャーナル（要約）履歴を取得
@@ -21,10 +26,19 @@ impl SummaryService {
     }
 
     // メモのリストを受け取り、要約を生成して保存する
-    pub async fn summarize_and_save(&self, user_id: String, memos: Vec<Memo>) -> Result<AISummary> {
+    pub async fn summarize_and_save(&self, user_id: String, memo_ids: Vec<String>) -> Result<AISummary> {
+        // 0. MemoIDからMemo本体を取得
+        let mut memos = Vec::new();
+        for id in &memo_ids {
+            // 見つかったメモだけを処理対象とする
+            if let Ok(Some(memo)) = self.memo_repo.find_by_id(id).await {
+                if memo.user_id == user_id {
+                    memos.push(memo);
+                }
+            }
+        }
         // 1. 要約ロジックの実行
         let summary_content = self.generate_summary_content(&memos);
-        let memo_ids = memos.iter().map(|m| m.memo_id.clone()).collect();
 
         // 2. DBへの保存データの構築
         let now = Utc::now();

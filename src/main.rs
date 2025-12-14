@@ -39,14 +39,19 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to MongoDB")?;
     let mongo_db = mongo_client.database(&config.database.mongodb.db_name);
 
+    // リポジトリのインスタンス化
+    let memo_repo = Arc::new(MongoMemoRepository::new(mongo_db.clone()));
+    let summary_repo = Arc::new(MongoSummaryRepository::new(mongo_db));
+    
     // サービスの構築
     let memo_service = Arc::new(MemoService::new(
-        Arc::new(MongoMemoRepository::new(mongo_db)),
+        memo_repo.clone(), // Cloneして渡す,
     ));
 
     // SummaryServiceの構築
     let summary_service = Arc::new(SummaryService::new(
-        Arc::new(MongoSummaryRepository::new(mongo_db)),
+        summary_repo,
+        memo_repo, 
     ));
 
     // サーバー起動
