@@ -3,7 +3,7 @@ use chrono::Utc;
 use uuid::Uuid;
 use crate::{
     error::Result,
-    repositories::{AISummary, MongoSummaryRepository, Memo},
+    repositories::{AISummary, MongoSummaryRepository, MongoMemoRepository, Memo},
 };
 
 pub struct SummaryService {
@@ -59,7 +59,7 @@ impl SummaryService {
     // 要約ロジック（実際にはOpenAI APIなどを呼ぶ箇所）
     fn generate_summary_content(&self, memos: &[Memo]) -> String {
         // Mock Implementation
-        // 外部APIを叩けないため、ここでは単純な結合を行います。
+        // 外部APIを叩けないため、ここでは単純な結合
         let combined_content: Vec<String> = memos.iter()
             .map(|m| format!("- {}", m.content))
             .collect();
