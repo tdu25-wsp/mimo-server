@@ -12,9 +12,8 @@ mod routes;
 mod server;
 
 use config::Config;
-use repositories::{MongoMemoRepository, MongoSummaryRepository}; // Added MongoSummaryRepository
-use services::{MemoService, SummaryService}; // Added SummaryService
-
+use repositories::{MongoMemoRepository, MongoSummaryRepository, PostgresTagRepository}; // PostgresTagRepositoryを使用
+use services::{MemoService, SummaryService, TagService};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("Loading configuration...");
@@ -43,12 +42,17 @@ async fn main() -> anyhow::Result<()> {
     let memo_repo = Arc::new(MongoMemoRepository::new(mongo_db.clone()));
     let summary_repo = Arc::new(MongoSummaryRepository::new(mongo_db));
     
+    // PostgreSQLのプールを使ってタグリポジトリを作成
+    let tag_repo = Arc::new(PostgresTagRepository::new(pg_pool.clone()));
+
     // サービスの構築
     let memo_service = Arc::new(MemoService::new(
         memo_repo.clone(), // Cloneして渡す,
     ));
 
-    // SummaryServiceの構築
+    // TagServiceを作成
+    let tag_service = Arc::new(TagService::new(tag_repo));
+
     let summary_service = Arc::new(SummaryService::new(
         summary_repo,
         memo_repo, 
@@ -59,9 +63,8 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .context("Failed to parse SocketAddr")?;
 
-    // server.rs のシグネチャ変更を最小限にするため、ルーター作成関数に渡すように修正
-    // server.rs を修正する代わりに、routesモジュール側で吸収
-    server::start_server(addr, memo_service, summary_service) // summary_serviceを追加
+    // TagServiceを追加で渡す
+    server::start_server(addr, memo_service, summary_service, tag_service) // summary_serviceを追加
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     

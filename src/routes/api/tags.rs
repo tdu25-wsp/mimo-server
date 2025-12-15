@@ -5,87 +5,86 @@ use axum::{
 };
 
 use axum_extra::extract::CookieJar;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize, de};
-use serde_json::{Value, json};
+use serde_json::json;
+use std::sync::Arc;
+use crate::{
+    services::TagService,
+    repositories::{TagList, TagCreateRequest, TagUpdateRequest},
+    error::Result,
+};
 
-#[derive(Serialize, Deserialize)]
-struct Tags {
-    tags: Vec<Tag>,
-}
-
-pub fn create_tags_routes() -> Router {
+pub fn create_tags_routes(service: Arc<TagService>) -> Router {
     Router::new()
-        .route("/tags", post(handle_create_tag).get(handle_get_tag_list))
-        .route(
-            "/tags/{capture}",
-            patch(handle_update_tag).delete(handle_delete_tag),
-        )
-}
-
-//// ハンドラ関数
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Tag {
-    tag_id: String,
-    user_id: String,
-    name: String,
-    color_code: String,
-
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TagList {
-    tags: Vec<Tag>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateTagRequest {
-    name: String,
-    color_code: String,
+        .route("/tags", {
+            let service = service.clone();
+            post(move |jar, json| handle_create_tag(jar, service.clone(), json))
+        })
+        .route("/tags", {
+            let service = service.clone();
+            get(move |jar| handle_get_tag_list(jar, service.clone()))
+        })
+        .route("/tags/{capture}", {
+            let service = service.clone();
+            patch(move |jar, path, json| handle_update_tag(jar, service.clone(), path, json))
+        })
+        .route("/tags/{capture}", {
+            // let service = service.clone(); // deleteで使用
+            delete(move |jar, path| handle_delete_tag(jar, service.clone(), path))
+        })
 }
 
 async fn handle_create_tag(
     jar: CookieJar,
-    req: extract::Json<CreateTagRequest>,
-) -> impl IntoResponse {
-    // TODO: Write tag to DB
+    service: Arc<TagService>,
+    extract::Json(req): extract::Json<TagCreateRequest>,
+) -> Result<impl IntoResponse> {
+    let _access_token = jar.get("access_token");
+    // TODO: Validate user from token
+    let user_id = "user_123".to_string(); // Dummy user
 
-    Json(json!({
+    let tag = service.create_tag(user_id, req).await?;
+    
+    Ok(Json(json!({
         "message": "Tag created successfully",
-        "tag": Tag {
-            tag_id: "tag_123".to_string(),
-            user_id: "user_456".to_string(),
-            name: req.name.clone(),
-            color_code: req.color_code.clone(),
-            created_at: Utc::now(),
-            updated_at: Utc::now()
-            }
-        }
-    ))
+        "tag": tag
+    })))
 }
 
-async fn handle_get_tag_list(jar: CookieJar) -> impl IntoResponse {
-    //TODO: Fetch tags from DB
-    Json(TagList {
-        tags: vec![], // TODO: Fetch tags from DB
-    })
+async fn handle_get_tag_list(
+    jar: CookieJar,
+    service: Arc<TagService>,
+) -> Result<impl IntoResponse> {
+    let _access_token = jar.get("access_token");
+    let user_id = "user_123".to_string(); // Dummy user
+
+    let tags = service.get_user_tags(&user_id).await?;
+    Ok(Json(TagList { tags }))
 }
 
-async fn handle_update_tag(jar: CookieJar, req: extract::Path<String>) -> impl IntoResponse {
-    //TODO: Update tag in DB
-    Json(json!({
-        "message": format!("Tag {} updated successfully", req.to_string()),
-    }))
+async fn handle_update_tag(
+    jar: CookieJar,
+    service: Arc<TagService>,
+    extract::Path(tag_id): extract::Path<String>,
+    extract::Json(req): extract::Json<TagUpdateRequest>,
+) -> Result<impl IntoResponse> {
+    let _access_token = jar.get("access_token");
+    
+    let tag = service.update_tag(&tag_id, req).await?;
+    Ok(Json(json!({
+        "message": "Tag updated successfully",
+        "tag": tag
+    })))
 }
 
-async fn handle_delete_tag(jar: CookieJar, req: extract::Path<String>) -> impl IntoResponse {
-    //TODO: Delete tag from DB
-    Json(json!({
-        "message": format!("Tag {} deleted successfully", req.to_string()),
-    }))
+async fn handle_delete_tag(
+    jar: CookieJar,
+    service: Arc<TagService>,
+    extract::Path(tag_id): extract::Path<String>,
+) -> Result<impl IntoResponse> {
+    let _access_token = jar.get("access_token");
+    
+    service.delete_tag(&tag_id).await?;
+    Ok(Json(json!({
+        "message": format!("Tag {} deleted successfully", tag_id),
+    })))
 }

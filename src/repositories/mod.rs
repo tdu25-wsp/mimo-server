@@ -1,13 +1,16 @@
 mod memo;
 mod user;
-pub mod summary; // Added summary module
+pub mod summary;
+pub mod tag; // tagモジュールを公開
 
 pub use memo::{
-    Memo, MemoList, MemoRequest, MemoCreateRequest, // deleted MemoUpdateRequest
-    MemoRepository,
+    Memo, MemoList, MemoRequest, MemoCreateRequest,
+    MemoRepository, MongoMemoRepository,
 };
-pub use user::{User, UserRepository};
-pub use summary::{AISummary, SummaryRepository, SummaryList}; // Re-exporting AISummary, SummaryRepository, and SummaryList
+pub use user::{User, UserRepository, PostgresUserRepository};
+pub use summary::{AISummary, SummaryRepository, SummaryList, MongoSummaryRepository};
+// PostgresTagRepositoryを追加
+pub use tag::{Tag, TagList, TagCreateRequest, TagUpdateRequest, TagRepository, PostgresTagRepository};
 
 // MongoDB implementation
 use mongodb::{bson::doc, Collection, Database};

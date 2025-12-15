@@ -1,5 +1,8 @@
 mod memo_service;
-mod summary_service; // Added summary_service module
+mod summary_service;
+mod tag_service;
 
 pub use memo_service::MemoService;
 pub use summary_service::SummaryService; // Re-exporting SummaryService
+pub use tag_service::TagService;
+pub use tag::{Tag, TagList, TagCreateRequest, TagUpdateRequest, TagRepository, MongoTagRepository};

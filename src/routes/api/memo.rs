@@ -27,6 +27,8 @@ pub fn create_memo_routes(service: Arc<MemoService>) -> Router {
         .route("/memos/{capture}", {
             let service = service.clone();
             get(move |jar, path| get_memo(jar, service.clone(), path))
+            .delete(move |jar, path| delete_memo(jar, service.clone(), path))
+            .patch(move |jar, path, json| update_memo(jar, service, path, json))
         })
         .route("/memos/{capture}", {
             delete(move |jar, path| delete_memo(jar, service.clone(), path))

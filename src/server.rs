@@ -13,7 +13,8 @@ use crate::services::{MemoService, SummaryService}; // memo_serviceに加えてs
 pub async fn start_server(
     addr: SocketAddr, 
     memo_service: Arc<MemoService>,
-    summary_service: Arc<SummaryService>, // summary_serviceを引数に追加
+    summary_service: Arc<SummaryService>,
+    tag_service: Arc<TagService>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting Mimo Server...");
 
@@ -36,7 +37,7 @@ pub async fn start_server(
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/api", create_api_routes(memo_service, summary_service))
+        .nest("/api", create_api_routes(memo_service, summary_service, tag_service))
         .nest("/share", create_share_routes())
         .layer(cors);
 
