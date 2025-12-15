@@ -72,6 +72,7 @@ async fn handle_update_tag(
     let tag = service.update_tag(&tag_id, req).await?;
     Ok(Json(json!({
         "message": "Tag updated successfully",
+        "tagId": tag.tag_id,
         "tag": tag
     })))
 }

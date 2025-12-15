@@ -9,8 +9,8 @@ pub use memo::{
 };
 pub use user::{User, UserRepository, PostgresUserRepository};
 pub use summary::{AISummary, SummaryRepository, SummaryList, MongoSummaryRepository};
-// PostgresTagRepositoryを追加
-pub use tag::{Tag, TagList, TagCreateRequest, TagUpdateRequest, TagRepository, PostgresTagRepository};
+// PostgresTagRepositoryのエクスポートを削除、定義のみエクスポート
+pub use tag::{Tag, TagList, TagCreateRequest, TagUpdateRequest, TagRepository};
 
 // MongoDB implementation
 use mongodb::{bson::doc, Collection, Database};

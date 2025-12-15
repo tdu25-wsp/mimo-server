@@ -12,8 +12,9 @@ mod routes;
 mod server;
 
 use config::Config;
-use repositories::{MongoMemoRepository, MongoSummaryRepository, PostgresTagRepository}; // PostgresTagRepositoryを使用
-use services::{MemoService, SummaryService, TagService};
+use repositories::{MongoMemoRepository, MongoSummaryRepository};
+use services::{MemoService, SummaryService, TagService, PostgresTagRepository}; 
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("Loading configuration...");
@@ -26,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
         config.database.postgres.connection_url, 
         config.database.postgres.db_name
     );
-    let _pg_pool = PgPoolOptions::new()
+    let pg_pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&postgres_url)
         .await
