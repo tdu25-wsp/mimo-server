@@ -14,7 +14,6 @@ use crate::{
     services::SummaryService,
 };
 
-
 pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
     Router::new()
         .route("/sum/summarize", {
@@ -31,15 +30,15 @@ pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
 
 // リクエストボディ用の構造体を定義
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SummarizeRequest {
     memo_ids: Vec<String>,
 }
 
-
 async fn summarize_memo(
     jar: CookieJar, 
     service: Arc<SummaryService>,
-    Json(req): Json<SummarizeRequest> // IDリストを受け取る
+    Json(req): Json<SummarizeRequest>
 ) -> impl IntoResponse {
     let _access_token = jar.get("access_token");
     // TODO: Validate access token
