@@ -3,19 +3,19 @@ use chrono::Utc;
 use uuid::Uuid;
 use crate::{
     error::Result,
-    repositories::{AISummary, MongoSummaryRepository, MongoMemoRepository, Memo},
+    repositories::{AISummary, SummaryRepository, summary::SummaryHandler, MemoRepository, MemoHandler, Memo},
 };
 
 pub struct SummaryService {
-    summary_repo: Arc<MongoSummaryRepository>,
-    memo_repo: Arc<MongoMemoRepository>,
+    summary_repo: Arc<SummaryRepository>,
+    memo_repo: Arc<MemoRepository>,
 }
 
 impl SummaryService {
     // コンストラクタで memo_repo も受け取る
     pub fn new(
-        summary_repo: Arc<MongoSummaryRepository>, 
-        memo_repo: Arc<MongoMemoRepository> 
+        summary_repo: Arc<SummaryRepository>, 
+        memo_repo: Arc<MemoRepository> 
     ) -> Self {
         Self { summary_repo, memo_repo }
     }

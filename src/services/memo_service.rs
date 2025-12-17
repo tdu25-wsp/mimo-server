@@ -3,15 +3,15 @@ use chrono::Utc;
 use uuid::Uuid;
 use crate::{
     error::{AppError, Result},
-    repositories::{Memo, MemoCreateRequest, MongoMemoRepository},
+    repositories::{Memo, MemoCreateRequest, MemoRepository, MemoHandler},
 };
 
 pub struct MemoService {
-    memo_repo: Arc<MongoMemoRepository>,
+    memo_repo: Arc<MemoRepository>,
 }
 
 impl MemoService {
-    pub fn new(memo_repo: Arc<MongoMemoRepository>) -> Self {
+    pub fn new(memo_repo: Arc<MemoRepository>) -> Self {
         Self { memo_repo }
     }
 

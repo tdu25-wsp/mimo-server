@@ -10,7 +10,7 @@ use serde_json::json;
 
 use crate::{
     error::Result,
-    repositories::{Memo, MemoCreateRequest, MemoList},
+    repositories::{Memo, MemoCreateRequest, MemoUpdateRequest, MemoList},
     services::MemoService,
 };
 
@@ -74,7 +74,7 @@ async fn update_memo(
     jar: CookieJar,
     service: Arc<MemoService>,
     Path(id): Path<String>,
-    Json(req): Json<UpdateMemoRequest>,
+    Json(req): Json<MemoUpdateRequest>,
 ) -> Result<Json<Memo>> {
     let _access_token = jar.get("access_token");
     let memo = service.update_content(&id, req.content).await?;

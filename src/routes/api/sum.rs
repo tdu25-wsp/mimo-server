@@ -2,9 +2,9 @@ use axum::{
     Router,
     routing::{get, post, patch},
     response::{IntoResponse, Json},
+    extract::Path,
 };
 use axum_extra::extract::CookieJar;
-use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -20,17 +20,16 @@ pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
             let service = service.clone();
             post(move |jar, json| summarize_memo(jar, service.clone(), json))
         })
-        .route("/sum/journaling", {
+        .route("/sum/journaling/{capture}", {
             let service = service.clone();
-            get(move |jar| get_journal(jar, service.clone()))
+            get(move |jar, path| get_journal(jar, service.clone(), path))
         })
         .route("/sum/journaling-freq", get(set_frequency))
         .route("/sum/journaling-freq", patch(update_frequency))
 }
 
 // リクエストボディ用の構造体を定義
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize)]
 struct SummarizeRequest {
     memo_ids: Vec<String>,
 }
@@ -54,11 +53,11 @@ async fn summarize_memo(
 
 async fn get_journal(
     jar: CookieJar,
-    service: Arc<SummaryService>
+    service: Arc<SummaryService>,
+    path : Path<String>,
 ) -> impl IntoResponse {
     let _access_token = jar.get("access_token");
-    let user_id = "user_123".to_string(); 
-
+    let user_id = path;
     match service.get_user_journals(&user_id).await {
         // repositories::SummaryList を使用
         Ok(summaries) => Json(SummaryList { summaries }).into_response(),
