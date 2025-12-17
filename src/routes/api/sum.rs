@@ -6,60 +6,64 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use serde::Serialize;
 use serde_json::json;
-use chrono::{DateTime, Utc};
+use std::sync::Arc;
 
-use crate::memo_models::*;
+// repositoriesから共通の構造体を使用
+use crate::{
+    repositories::{AISummary, SummaryList}, 
+    services::SummaryService,
+};
 
-pub fn create_sum_routes() -> Router {
+pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
     Router::new()
-        .route("/sum/summarize", post(summarize_memo))
-        .route("/sum/journaling", get(get_journal))
+        .route("/sum/summarize", {
+            let service = service.clone();
+            post(move |jar, json| summarize_memo(jar, service.clone(), json))
+        })
+        .route("/sum/journaling", {
+            let service = service.clone();
+            get(move |jar| get_journal(jar, service.clone()))
+        })
         .route("/sum/journaling-freq", get(set_frequency))
         .route("/sum/journaling-freq", patch(update_frequency))
 }
 
-//// ハンドラ定義
-
-#[derive(Serialize)]
+// リクエストボディ用の構造体を定義
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AISummary {
-    summary_id: String,
-    user_id: String,
-    content: String,
-
+struct SummarizeRequest {
     memo_ids: Vec<String>,
-    created_at: String,
-    updated_at: String,
-    is_auto_generated: bool,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SummaryList {
-    summaries: Vec<AISummary>,
-}
-
-
-async fn summarize_memo(jar: CookieJar, memos: Json<MemoList>) -> impl IntoResponse {
-    let access_token = jar.get("access_token");
+async fn summarize_memo(
+    jar: CookieJar, 
+    service: Arc<SummaryService>,
+    Json(req): Json<SummarizeRequest>
+) -> impl IntoResponse {
+    let _access_token = jar.get("access_token");
     // TODO: Validate access token
     // TODO: summarize_memos
-    Json(AISummary {
-        summary_id: "summary123".to_string(),
-        user_id: "user123".to_string(),
-        content: "This is a summarized content.".to_string(),
-        memo_ids: memos.memos.iter().map(|m| m.memo_id.clone()).collect(),
-        created_at: Utc::now().to_string(),
-        updated_at: Utc::now().to_string(),
-        is_auto_generated: true,
+    let user_id = "user_123".to_string(); 
 
-    })
+    // memo_ids を渡してサービスを呼び出す
+    match service.summarize_and_save(user_id, req.memo_ids).await {
+        Ok(summary) => Json(summary).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
-async fn get_journal(jar: CookieJar) -> impl IntoResponse {
-    Json(SummaryList {
-        summaries: vec![], // TODO: Fetch journal entries from DB
-    })
+async fn get_journal(
+    jar: CookieJar,
+    service: Arc<SummaryService>
+) -> impl IntoResponse {
+    let _access_token = jar.get("access_token");
+    let user_id = "user_123".to_string(); 
+
+    match service.get_user_journals(&user_id).await {
+        // repositories::SummaryList を使用
+        Ok(summaries) => Json(SummaryList { summaries }).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn set_frequency(jar: CookieJar) -> impl IntoResponse {
