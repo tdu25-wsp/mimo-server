@@ -8,11 +8,12 @@ use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{create_api_routes, create_share_routes};
-use crate::services::MemoService;
+use crate::services::{MemoService, SummaryService}; // memo_serviceに加えてsummary_serviceもインポート
 
 pub async fn start_server(
-    addr: SocketAddr,
+    addr: SocketAddr, 
     memo_service: Arc<MemoService>,
+    summary_service: Arc<SummaryService>, // summary_serviceを引数に追加
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting Mimo Server...");
 
@@ -40,7 +41,7 @@ pub async fn start_server(
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/api", create_api_routes(memo_service))
+        .nest("/api", create_api_routes(memo_service, summary_service))
         .nest("/share", create_share_routes())
         .layer(cors);
 

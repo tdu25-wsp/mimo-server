@@ -1,15 +1,18 @@
 mod memo;
 mod user;
+pub mod summary; // Added summary module
 
 pub use memo::{
-    Memo, MemoList, MemoRequest, MemoCreateRequest, AISummary,
+    Memo, MemoList, MemoRequest, MemoCreateRequest, // deleted MemoUpdateRequest
     MemoRepository,
 };
 pub use user::{User, UserRepository};
+pub use summary::{AISummary, SummaryRepository, SummaryList}; // Re-exporting AISummary, SummaryRepository, and SummaryList
 
 // MongoDB implementation
 use mongodb::{bson::doc, Collection, Database};
 use crate::error::{AppError, Result};
+use futures::stream::TryStreamExt; // for collecting streams
 
 pub struct MongoMemoRepository {
     collection: Collection<Memo>,
@@ -64,6 +67,38 @@ impl MongoMemoRepository {
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
         Ok(())
+    }
+}
+
+// --- Summary Repository Implementation ---
+// MongoDB implementation
+pub struct MongoSummaryRepository {
+    collection: Collection<AISummary>, // Collection for AISummary
+}
+
+impl MongoSummaryRepository {
+    pub fn new(db: Database) -> Self {
+        Self {
+            collection: db.collection("summaries"), // Using "summaries" collection
+        }
+    }
+
+    pub async fn find_by_user_id(&self, user_id: &str) -> Result<Vec<AISummary>> { // Implementing find_by_user_id
+        self.collection
+            .find(doc! { "userId": user_id })
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))? // Finding documents by userId
+            .try_collect()
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string())) // Collecting results into a Vec
+    }
+
+    pub async fn create(&self, summary: AISummary) -> Result<AISummary> { // Implementing create method
+        self.collection
+            .insert_one(&summary)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        Ok(summary)
     }
 }
 

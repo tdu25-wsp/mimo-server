@@ -12,8 +12,8 @@ mod server;
 mod services;
 
 use config::Config;
-use repositories::MongoMemoRepository;
-use services::MemoService;
+use repositories::{MongoMemoRepository, MongoSummaryRepository}; // Added MongoSummaryRepository
+use services::{MemoService, SummaryService}; // Added SummaryService
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -54,17 +54,29 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to MongoDB")?;
     let mongo_db = mongo_client.database(&config.database.mongodb.db_name);
 
+    // リポジトリのインスタンス化
+    let memo_repo = Arc::new(MongoMemoRepository::new(mongo_db.clone()));
+    let summary_repo = Arc::new(MongoSummaryRepository::new(mongo_db));
+    
     // サービスの構築
-    let memo_service = Arc::new(MemoService::new(Arc::new(MongoMemoRepository::new(
-        mongo_db,
-    ))));
+    let memo_service = Arc::new(MemoService::new(
+        memo_repo.clone(), // Cloneして渡す,
+    ));
+
+    // SummaryServiceの構築
+    let summary_service = Arc::new(SummaryService::new(
+        summary_repo,
+        memo_repo, 
+    ));
 
     // サーバー起動
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)
         .parse()
         .context("Failed to parse SocketAddr")?;
 
-    server::start_server(addr, memo_service)
+    // server.rs のシグネチャ変更を最小限にするため、ルーター作成関数に渡すように修正
+    // server.rs を修正する代わりに、routesモジュール側で吸収
+    server::start_server(addr, memo_service, summary_service) // summary_serviceを追加
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 

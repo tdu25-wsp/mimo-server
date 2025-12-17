@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    routing::{delete, get, post},
+    routing::{delete, get, post, patch}, // Added patch
     response::Json,
     extract::Path,
 };
@@ -66,6 +66,18 @@ async fn get_memo(
     let _access_token = jar.get("access_token");
     
     let memo = service.find_by_id(&id).await?;
+    Ok(Json(memo))
+}
+
+// 追加: メモ更新ハンドラー
+async fn update_memo(
+    jar: CookieJar,
+    service: Arc<MemoService>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateMemoRequest>,
+) -> Result<Json<Memo>> {
+    let _access_token = jar.get("access_token");
+    let memo = service.update_content(&id, req.content).await?;
     Ok(Json(memo))
 }
 
