@@ -9,9 +9,13 @@ services:
       - "5050:5050"
     restart: unless-stopped
     environment:
-      - RUST_LOG=info
-      - DATABASE_URL=postgresql://mimo:mimo_password@postgres:5432/mimo_db
-      - MONGODB_URI=mongodb://mimo:mimo_password@mongodb:27017/mimo_db
+      - POSTGRES_CONNECTION_URL=postgresql://mimo:mimo_password@postgres:5432
+      - POSTGRES_DB_NAME=mimo_db
+      - MONGODB_CONNECTION_URI=mongodb://mimo:mimo_password@mongodb:27017
+      - MONGODB_DB_NAME=mimo_db
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5050
+      - LOG_LEVEL=info
     depends_on:
       postgres:
         condition: service_healthy

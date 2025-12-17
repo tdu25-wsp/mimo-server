@@ -5,7 +5,7 @@ use axum::{
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer; 
+use tower_http::cors::CorsLayer;
 
 use crate::routes::{create_api_routes, create_share_routes};
 use crate::services::{MemoService, SummaryService}; // memo_serviceに加えてsummary_serviceもインポート
@@ -18,15 +18,20 @@ pub async fn start_server(
     println!("Starting Mimo Server...");
 
     println!("Configuring CORS...");
+    let allowed_origins = [
+        "https://mimo.shuta.me".parse::<HeaderValue>().unwrap(),
+        format!("http://localhost:{}", addr.port())
+            .parse::<HeaderValue>()
+            .unwrap(),
+        format!("http://127.0.0.1:{}", addr.port())
+            .parse::<HeaderValue>()
+            .unwrap(),
+        format!("http://{}", addr).parse::<HeaderValue>().unwrap(),
+        format!("https://{}", addr).parse::<HeaderValue>().unwrap(),
+    ];
+
     let cors = CorsLayer::new()
-        .allow_origin("https://mimo.shuta.me".parse::<HeaderValue>().unwrap())
-        .allow_origin(
-            format!("http://localhost{}", addr.port())
-                .parse::<HeaderValue>()
-                .unwrap(),
-        )
-        .allow_origin(format!("http://{}", addr).parse::<HeaderValue>().unwrap())
-        .allow_origin(format!("https://{}", addr).parse::<HeaderValue>().unwrap())
+        .allow_origin(allowed_origins)
         .allow_methods(vec![
             Method::GET,
             Method::POST,
