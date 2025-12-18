@@ -26,7 +26,7 @@ pub async fn start_server(
         format!("http://127.0.0.1:{}", addr.port())
             .parse::<HeaderValue>()
             .unwrap(),
-        "http://localhost:3030".parse::<HeaderValue>().unwrap(),
+        "http://localhost:3000".parse::<HeaderValue>().unwrap(),
         format!("http://{}", addr).parse::<HeaderValue>().unwrap(),
         format!("https://{}", addr).parse::<HeaderValue>().unwrap(),
     ];
