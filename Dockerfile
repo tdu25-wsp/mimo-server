@@ -11,6 +11,7 @@ RUN mkdir src && \
     rm -rf src && \
     rm -f target/release/deps/mimo_server*
 COPY src ./src
+COPY migrations ./migrations
 RUN cargo build --release
 
 # プロダクションステージ

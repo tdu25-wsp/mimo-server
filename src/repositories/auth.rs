@@ -1,8 +1,19 @@
-use async_trait::async_trait;
+use crate::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
-use crate::error::{AppError, Result};
 
+pub struct AuthRepository {
+    pub pool: sqlx::PgPool,
+}
+impl AuthRepository {
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/////////
+/// User
+/////////
 #[derive(Debug, Clone)]
 pub struct User {
     pub user_id: String,
@@ -26,7 +37,7 @@ pub struct UserResponse {
     pub is_deleted: bool,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 pub trait UserHandler: Send + Sync {
     async fn find_by_id(&self, user_id: &str) -> Result<Option<UserResponse>>;
     async fn find_by_email(&self, email: &str) -> Result<Option<UserResponse>>;
@@ -35,18 +46,8 @@ pub trait UserHandler: Send + Sync {
     async fn delete(&self, user_id: &str) -> Result<()>;
 }
 
-pub struct UserRepository{
-    pool: sqlx::PgPool
-}
-
-impl UserRepository {
-    pub fn new(pool: sqlx::PgPool) -> Self {
-        Self { pool }
-    }
-}
-
-#[async_trait]
-impl UserHandler for UserRepository {
+#[async_trait::async_trait]
+impl UserHandler for AuthRepository {
     async fn find_by_id(&self, user_id: &str) -> Result<Option<UserResponse>> {
         let mut user = sqlx::query_as::<_, UserResponse>(
             "SELECT user_id, email, display_name, created_at, updated_at, is_deleted FROM users WHERE user_id = $1"
@@ -120,14 +121,55 @@ impl UserHandler for UserRepository {
     }
 
     async fn delete(&self, user_id: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET is_deleted = TRUE WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+}
+
+/////////
+/// JWT Revocation
+/// /////
+#[async_trait::async_trait]
+pub trait JWTHandler: Send + Sync {
+    async fn revoke(&self, jti: &str, exp: &str) -> Result<()>;
+    async fn is_revoked(&self, jti: &str) -> Result<bool>;
+    async fn cleanup(&self) -> Result<()>;
+}
+
+#[async_trait::async_trait]
+impl JWTHandler for AuthRepository {
+    async fn revoke(&self, jti: &str, exp: &str) -> Result<()> {
         sqlx::query(
-            "UPDATE users SET is_deleted = TRUE WHERE user_id = $1"
+            "INSERT INTO jwt_revocations (jti, expires_at, revoked_at) VALUES ($1, $2, now())",
         )
-        .bind(user_id)
+        .bind(jti)
+        .bind(exp)
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
         Ok(())
     }
-}
 
+    async fn is_revoked(&self, jti: &str) -> Result<bool> {
+        let row =
+            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM jwt_revocations WHERE jti = $1")
+                .bind(jti)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        Ok(row.0 > 0)
+    }
+
+    async fn cleanup(&self) -> Result<()> {
+        sqlx::query("DELETE FROM jwt_revocations WHERE expires_at < now()")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+}
