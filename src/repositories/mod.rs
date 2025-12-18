@@ -1,11 +1,10 @@
-mod memo;
-mod user;
-pub mod summary; // Added summary module
+pub mod auth;
+pub mod memo;
+pub mod summary;
+pub mod tag;
 
 pub use memo::{
-    Memo, MemoList, MemoRequest, MemoCreateRequest, MemoUpdateRequest,
-    MemoRepository, MemoHandler
+    Memo, MemoCreateRequest, MemoHandler, MemoList, MemoRepository, MemoRequest, MemoUpdateRequest,
 };
-pub use user::{User, UserRepository};
-pub use summary::{AISummary, SummaryRepository, SummaryList}; // Re-exporting AISummary, SummaryRepository, and SummaryList
-
+pub use summary::{AISummary, SummaryHandler, SummaryList, SummaryRepository}; // Re-exporting AISummary, SummaryRepository, and SummaryList
+pub use tag::{Tag, TagRepository};

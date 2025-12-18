@@ -1,28 +1,32 @@
 use axum::{
     Router,
-    routing::{delete, get, post, patch}, // Added patch
-    response::Json,
     extract::Path,
+    response::Json,
+    routing::{delete, get, patch, post}, // Added patch
 };
 use axum_extra::extract::cookie::CookieJar;
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 
 use crate::{
     error::Result,
-    repositories::{Memo, MemoCreateRequest, MemoUpdateRequest, MemoList},
+    repositories::{Memo, MemoCreateRequest, MemoList, MemoUpdateRequest},
     services::MemoService,
 };
 
 pub fn create_memo_routes(service: Arc<MemoService>) -> Router {
     Router::new()
-        .route("/users/{capture}/memos", {
+        .route("/memos/list/{capture}", {
             let service = service.clone();
             get(move |jar, path| list_memos(jar, service.clone(), path))
         })
         .route("/memos", {
             let service = service.clone();
             post(move |jar, json| create_memo(jar, service.clone(), json))
+        })
+        .route("/memos/{capture}", {
+            let service = service.clone();
+            patch(move |jar, path, json| update_memo(jar, service.clone(), path, json))
         })
         .route("/memos/{capture}", {
             let service = service.clone();
@@ -40,7 +44,7 @@ async fn list_memos(
 ) -> Result<Json<MemoList>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
-    
+
     let memos = service.find_by_user(&user_id).await?;
     Ok(Json(MemoList { memos }))
 }
@@ -52,7 +56,7 @@ async fn create_memo(
 ) -> Result<Json<Memo>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
-    
+
     let memo = service.create(req).await?;
     Ok(Json(memo))
 }
@@ -64,7 +68,7 @@ async fn get_memo(
 ) -> Result<Json<Memo>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
-    
+
     let memo = service.find_by_id(&id).await?;
     Ok(Json(memo))
 }
@@ -88,7 +92,7 @@ async fn delete_memo(
 ) -> Result<Json<serde_json::Value>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
-    
+
     service.delete(&id).await?;
     Ok(Json(json!({
         "status": "success",

@@ -1,14 +1,14 @@
-use serde::{Serialize, Deserialize};
+use crate::error::{AppError, Result};
 use chrono::{DateTime, Utc};
 use mongodb::{bson::doc, options::FindOptions};
-use crate::error::{Result, AppError};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Memo {
     pub memo_id: String,
     pub content: String,
     pub user_id: String,
-    pub tag_id: String,
+    pub tag_id: Vec<String>,
     pub auto_tag_id: String,
     pub manual_tag_id: Option<Vec<String>>,
     pub share_url_token: Option<String>,
@@ -23,20 +23,20 @@ pub struct MemoList {
 
 #[derive(Deserialize)]
 pub struct MemoRequest {
-   pub memo_id: Vec<String>,
+    pub memo_id: Vec<String>,
 }
 
 #[derive(Deserialize)]
 pub struct MemoCreateRequest {
     pub user_id: String,
-    pub tag_id: Option<String>,
+    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
     pub memo_id: String,
-    pub tag_id: Option<String>,
+    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 
@@ -56,16 +56,17 @@ pub struct MemoRepository {
 
 impl MemoRepository {
     pub fn new(db: mongodb::Database) -> Self {
-        Self { collection: db.collection("memos")  }
+        Self {
+            collection: db.collection("memos"),
+        }
     }
-
 }
 
 #[async_trait::async_trait]
 impl MemoHandler for MemoRepository {
     async fn find_by_user_id(&self, user_id: &str) -> Result<Vec<Memo>> {
         use futures::stream::TryStreamExt;
-        
+
         self.collection
             .find(doc! { "user_id": user_id })
             .await
@@ -76,7 +77,8 @@ impl MemoHandler for MemoRepository {
     }
 
     async fn find_by_id(&self, memo_id: &str) -> Result<Option<Memo>> {
-        let memo = self.collection
+        let memo = self
+            .collection
             .find_one(doc! { "memo_id": memo_id })
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;

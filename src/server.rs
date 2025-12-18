@@ -11,7 +11,7 @@ use crate::routes::{create_api_routes, create_share_routes};
 use crate::services::{MemoService, SummaryService}; // memo_serviceに加えてsummary_serviceもインポート
 
 pub async fn start_server(
-    addr: SocketAddr, 
+    addr: SocketAddr,
     memo_service: Arc<MemoService>,
     summary_service: Arc<SummaryService>, // summary_serviceを引数に追加
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -26,6 +26,7 @@ pub async fn start_server(
         format!("http://127.0.0.1:{}", addr.port())
             .parse::<HeaderValue>()
             .unwrap(),
+        "http://localhost:3030".parse::<HeaderValue>().unwrap(),
         format!("http://{}", addr).parse::<HeaderValue>().unwrap(),
         format!("https://{}", addr).parse::<HeaderValue>().unwrap(),
     ];
