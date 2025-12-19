@@ -43,7 +43,15 @@ struct SummaryList {
 async fn summarize_memo(jar: CookieJar, memos: Json<MemoList>) -> impl IntoResponse {
     let access_token = jar.get("access_token");
     // TODO: Validate access token
-    // TODO: summarize_memos
+    // AIに読ませるために、複数のメモを一つのテキストに整形する
+    let input_text = memos.memos.iter() 
+        .map(|memo| format!("- {}", memo.content)) // 各メモをハイフン付きの箇条書き形式に変換
+        .collect::<Vec<String>>() // ベクタに収集
+        .join("\n"); // 改行で結合して一つの文字列にする
+    
+    // debug用出力
+    println!("AIに送るテキスト:\n{}", input_text);
+
     Json(AISummary {
         summary_id: "summary123".to_string(),
         user_id: "user123".to_string(),
