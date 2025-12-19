@@ -9,6 +9,7 @@ use axum::{
     routing::{get, patch, post},
 };
 use axum_extra::extract::CookieJar;
+use serde::Deserialize; 
 use serde_json::json;
 
 pub fn create_sum_routes() -> Router<AppState> {
@@ -19,15 +20,20 @@ pub fn create_sum_routes() -> Router<AppState> {
         .route("/sum/journaling-freq", patch(update_frequency))
 }
 
+#[derive(Deserialize)]
+pub struct SummarizeRequest {
+    pub memo_ids: Vec<String>,
+}
+
 async fn summarize_memo(
     State(state): State<AppState>,
     jar: CookieJar,
-    Json(req): Json<SummaryCreateRequest>,
+    Json(req): Json<SummarizeRequest>,
 ) -> impl IntoResponse {
     let _access_token = jar.get("access_token");
     // TODO: Validate access token
     // TODO: summarize_memos
-    let user_id = req.user_id.clone();
+    let user_id = "user123".to_string();
 
     // memo_ids を渡してサービスを呼び出す
     match state

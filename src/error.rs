@@ -12,6 +12,8 @@ pub enum AppError {
     ValidationError(String),
     HashingError(String),
     EnvironmentError(String),
+    ExternalServiceError(String), // 外部サービス関連のエラー
+    ConfigError(String), // APIキー設定エラー
 }
 
 impl std::fmt::Display for AppError {
@@ -22,6 +24,8 @@ impl std::fmt::Display for AppError {
             AppError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             AppError::HashingError(msg) => write!(f, "Hashing error: {}", msg),
             AppError::EnvironmentError(msg) => write!(f, "Environment error: {}", msg),
+            AppError::ExternalServiceError(msg) => write!(f, "External service error: {}", msg), // 外部サービス関連のエラー
+            AppError::ConfigError(msg) => write!(f, "Configuration error: {}", msg), // APIキー設定エラー
         }
     }
 }
@@ -41,6 +45,10 @@ impl IntoResponse for AppError {
             AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::HashingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::EnvironmentError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            // A500 Internal Server Error (APIキー設定エラーなど)
+            AppError::ConfigError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            // 502 Bad Gateway (外部APIとの通信失敗など)
+            AppError::ExternalServiceError(msg) => (StatusCode::BAD_GATEWAY, msg),
         };
 
         (status, Json(ErrorResponse { error: message })).into_response()

@@ -25,3 +25,4 @@ toml = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6.6", features = ["cors"] }
 uuid = { version = "1.11", features = ["v4"] }
+reqwest = { version = "0.11", features = ["json"] }
