@@ -1,73 +1,80 @@
 use axum::{
     Router,
-    routing::{get, post, patch},
+    extract::Path,
     response::{IntoResponse, Json},
+    routing::{get, patch, post},
 };
 use axum_extra::extract::CookieJar;
-use serde::Serialize;
 use serde_json::json;
-use chrono::{DateTime, Utc};
+use std::sync::Arc;
 
-use crate::repositories::MemoList;
+// repositoriesから共通の構造体を使用
+use crate::{
+    repositories::{AISummary, SummaryList},
+    services::SummaryService,
+};
 
-pub fn create_sum_routes() -> Router {
+pub fn create_sum_routes(service: Arc<SummaryService>) -> Router {
     Router::new()
-        .route("/sum/summarize", post(summarize_memo))
-        .route("/sum/journaling", get(get_journal))
+        .route("/sum/summarize", {
+            let service = service.clone();
+            post(move |jar, json| summarize_memo(jar, service.clone(), json))
+        })
+        .route("/sum/{capture}", {
+            let service = service.clone();
+            get(move |jar, path| get_summaries(jar, service.clone(), path))
+        })
         .route("/sum/journaling-freq", get(set_frequency))
         .route("/sum/journaling-freq", patch(update_frequency))
 }
 
-//// ハンドラ定義
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AISummary {
-    summary_id: String,
-    user_id: String,
-    content: String,
-
+// リクエストボディ用の構造体を定義
+#[derive(serde::Deserialize)]
+struct SummarizeRequest {
     memo_ids: Vec<String>,
-    created_at: String,
-    updated_at: String,
-    is_auto_generated: bool,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SummaryList {
-    summaries: Vec<AISummary>,
-}
-
-
-async fn summarize_memo(jar: CookieJar, memos: Json<MemoList>) -> impl IntoResponse {
-    let access_token = jar.get("access_token");
+async fn summarize_memo(
+    jar: CookieJar,
+    service: Arc<SummaryService>,
+    Json(req): Json<SummarizeRequest>,
+) -> impl IntoResponse {
+    let _access_token = jar.get("access_token");
     // TODO: Validate access token
-    // AIに読ませるために、複数のメモを一つのテキストに整形する
-    let input_text = memos.memos.iter() 
-        .map(|memo| format!("- {}", memo.content)) // 各メモをハイフン付きの箇条書き形式に変換
-        .collect::<Vec<String>>() // ベクタに収集
-        .join("\n"); // 改行で結合して一つの文字列にする
-    
-    // debug用出力
-    println!("AIに送るテキスト:\n{}", input_text);
+    // TODO: summarize_memos
+    let user_id = "user_123".to_string();
 
-    Json(AISummary {
-        summary_id: "summary123".to_string(),
-        user_id: "user123".to_string(),
-        content: "This is a summarized content.".to_string(),
-        memo_ids: memos.memos.iter().map(|m| m.memo_id.clone()).collect(),
-        created_at: Utc::now().to_string(),
-        updated_at: Utc::now().to_string(),
-        is_auto_generated: true,
-
-    })
+    // memo_ids を渡してサービスを呼び出す
+    match service.summarize_and_save(user_id, req.memo_ids).await {
+        Ok(summary) => Json(summary).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
-async fn get_journal(jar: CookieJar) -> impl IntoResponse {
-    Json(SummaryList {
-        summaries: vec![], // TODO: Fetch journal entries from DB
-    })
+//async fn get_summary(
+//    jar: CookieJar,
+//    service: Arc<SummaryService>,
+//    Path(summary_id): Path<String>,
+//) -> impl IntoResponse {
+//    let _access_token = jar.get("access_token");
+//    match service.get_summary_by_id(&summary_id).await {
+//        Ok(summary) => Json(summary).into_response(),
+//        Err(e) => e.into_response(),
+//    }
+//}
+
+async fn get_summaries(
+    jar: CookieJar,
+    service: Arc<SummaryService>,
+    path: Path<String>,
+) -> impl IntoResponse {
+    let _access_token = jar.get("access_token");
+    let user_id = path;
+    match service.get_user_journals(&user_id).await {
+        // repositories::SummaryList を使用
+        Ok(summaries) => Json(SummaryList { summaries }).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn set_frequency(jar: CookieJar) -> impl IntoResponse {
@@ -78,7 +85,7 @@ async fn set_frequency(jar: CookieJar) -> impl IntoResponse {
     }))
 }
 
-async  fn update_frequency(jar: CookieJar) -> impl IntoResponse {
+async fn update_frequency(jar: CookieJar) -> impl IntoResponse {
     // Implementation here
     Json(json!({
         "status": "success",
