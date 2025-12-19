@@ -1,40 +1,40 @@
-use serde::Deserialize;
-use std::fs;
-use std::env;
 use anyhow::Context;
+use serde::Deserialize;
+use std::env;
+use std::fs;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub postgres: PostgresConfig,
     pub mongodb: MongoDBConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct PostgresConfig {
     pub connection_url: String,
     pub db_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct MongoDBConfig {
     pub connection_uri: String,
     pub db_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct LoggingConfig {
     pub level: String,
 }
@@ -58,27 +58,25 @@ impl Config {
                     },
                 },
                 server: ServerConfig {
-                    host: env::var("SERVER_HOST")
-                        .unwrap_or_else(|_| "0.0.0.0".to_string()),
+                    host: env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
                     port: env::var("SERVER_PORT")
                         .unwrap_or_else(|_| "5050".to_string())
                         .parse()
                         .unwrap_or(5050),
                 },
                 logging: LoggingConfig {
-                    level: env::var("LOG_LEVEL")
-                        .unwrap_or_else(|_| "info".to_string()),
+                    level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
                 },
             });
         }
 
         // Config.tomlから読み込む場合（ローカル開発）
-        let config_str = fs::read_to_string("Config.toml")
-            .context("Failed to read Config.toml. Use environment variables or provide Config.toml")?;
-        
-        let config: Config = toml::from_str(&config_str)
-            .context("Failed to parse Config.toml")?;
-        
+        let config_str = fs::read_to_string("Config.toml").context(
+            "Failed to read Config.toml. Use environment variables or provide Config.toml",
+        )?;
+
+        let config: Config = toml::from_str(&config_str).context("Failed to parse Config.toml")?;
+
         Ok(config)
     }
 }

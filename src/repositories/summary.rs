@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
-use async_trait::async_trait;
 use crate::error::Result;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 // AI-generated summary structure
 #[derive(Debug, Clone, Serialize, Deserialize)] //deriving necessary traits
-#[serde(rename_all = "camelCase")] // setting serialization format
 pub struct AISummary {
     pub summary_id: String,
     pub user_id: String,
@@ -14,6 +13,12 @@ pub struct AISummary {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_auto_generated: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SummaryCreateRequest {
+    pub user_id: String,
+    pub memo_ids: Vec<String>,
 }
 
 // Wrapper for a list of AI summaries
@@ -31,7 +36,7 @@ pub trait SummaryHandler: Send + Sync {
 }
 
 pub struct SummaryRepository {
-    collection: mongodb::Collection<AISummary>
+    collection: mongodb::Collection<AISummary>,
 }
 
 impl SummaryRepository {

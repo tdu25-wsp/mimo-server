@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::State,
     response::{IntoResponse, Json},
     routing::{get, post},
 };
@@ -8,7 +9,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-pub fn create_auth_routes() -> Router {
+use crate::server::AppState;
+
+pub fn create_auth_routes() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(handle_login))
         .route("/auth/logout", post(handle_logout))

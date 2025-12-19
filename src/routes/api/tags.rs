@@ -1,5 +1,6 @@
 use axum::{
-    Router, extract,
+    Router,
+    extract::{self, State},
     response::{IntoResponse, Json},
     routing::{delete, get, patch, post},
 };
@@ -9,18 +10,20 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de};
 use serde_json::{Value, json};
 
+use crate::server::AppState;
+
 #[derive(Serialize, Deserialize)]
 struct Tags {
     tags: Vec<Tag>,
 }
 
-pub fn create_tags_routes() -> Router {
-    Router::new()
-        .route("/tags", post(handle_create_tag).get(handle_get_tag_list))
-        .route(
-            "/tags/{capture}",
-            patch(handle_update_tag).delete(handle_delete_tag),
-        )
+pub fn create_tags_routes() -> Router<AppState> {
+    Router::new().route("/tags", post(handle_create_tag)).route(
+        "/tags/{capture}",
+        get(handle_get_tag_list)
+            .patch(handle_update_tag)
+            .delete(handle_delete_tag),
+    )
 }
 
 //// ハンドラ関数
