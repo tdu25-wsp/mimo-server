@@ -72,6 +72,10 @@ pub fn load_or_generate_secret_key(path: Option<&Path>) -> Result<String> {
         println!("✓ Generated JWT secret: {}", &secret[..16]); // 最初の16文字のみ表示
         return Ok(secret);
     }
+
+    Err(AppError::EnvironmentError(
+        "JWT_SECRET環境変数またはファイルパスを指定してください".to_string(),
+    ))
 }
 
 /// 後方互換性のため（環境変数・ファイルのみ、自動生成なし）
