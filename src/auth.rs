@@ -1,55 +1,128 @@
-use std::io;
 use std::path::Path;
 
-use serde::{Serialize, Deserialize};
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
-use p256::ecdsa::{SigningKey, VerifyingKey};
-use p256::pkcs8::{EncodePrivateKey, DecodePublicKey}; // 追加: 鍵変換用
-use chrono::{Utc, Duration}; // Durationを追加
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use crate::error::{AppError, Result};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 //////
-//公開鍵認証関係の実装
+// パスワード関係の実装
+pub fn validate_password_format(password: &str) -> Result<()> {
+    let length_min = 8;
+    let length_max = 256;
+    if password.len() < length_min || password.len() > length_max {
+        return Err(AppError::ValidationError(format!(
+            "パスワードは{}文字以上{}文字以下である必要があります",
+            length_min, length_max
+        )));
+    }
 
-// キーペアの生成
-pub fn gen_keypair() -> Result<(SigningKey, VerifyingKey)> {
-    let private = SigningKey::random(&mut rand::OsRng);
-    let public = VerifyingKey::from(&private);
-    Ok((private, public))
+    Ok(())
 }
 
-// 署名鍵の読み込み
-// 注: jsonwebtokenで利用するため、EncodingKeyに変換して返します
-pub fn load_signing_key(path: &Path) -> Result<EncodingKey> {
-    if !path.exists() {
-        return Err("指定されたファイルパスに署名鍵が存在しません".into());
-    }
-    
-    let pem = std::fs::read_to_string(path)?;
-    // p256で一度パースして検証しつつ、jsonwebtoken用のKeyを作成します
-    let secret = p256::ecdsa::SecretKey::from_pkcs8_pem(&pem)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData
-                ,format!("指定された署名鍵の読み込みに失敗しました．{:?}", e)))?;
-    
-    let key_bytes = secret.to_pkcs8_pem(Default::default())?;
-    Ok(EncodingKey::from_ec_pem(key_bytes.as_bytes())?)
+//////
+// 共通鍵（HMAC）認証関係の実装
+
+/// ランダムな共通鍵を生成（32バイト = 256ビット）
+/// Base64エンコードされた文字列を返す
+pub fn generate_secret_key() -> String {
+    use base64::{Engine as _, engine::general_purpose};
+    use rand::RngCore;
+
+    let mut rng = rand::rng();
+    let mut key = vec![0u8; 32]; // 256ビット
+    rng.fill_bytes(&mut key);
+    general_purpose::STANDARD.encode(&key)
 }
 
-// 検証鍵（公開鍵）の読み込み（検証用に必要となるため追加）
-pub fn load_verifying_key(path: &Path) -> Result<DecodingKey> {
-    if !path.exists() {
-        return Err("指定されたファイルパスに公開鍵が存在しません".into());
+/// JWT秘密鍵の読み込み（または自動生成）
+/// 優先順位: 1. 環境変数 JWT_SECRET, 2. ファイル, 3. 自動生成（開発用）
+pub fn load_or_generate_secret_key(path: Option<&Path>) -> Result<String> {
+    // 環境変数から読み込みを試みる
+    if let Ok(secret) = std::env::var("JWT_SECRET") {
+        if secret.is_empty() {
+            return Err(AppError::EnvironmentError(
+                "JWT_SECRET環境変数が空です".to_string(),
+            ));
+        }
+        println!("✓ JWT secret loaded from environment variable");
+        return Ok(secret);
     }
-    let pem = std::fs::read_to_string(path)?;
-    Ok(DecodingKey::from_ec_pem(pem.as_bytes())?)
+
+    // ファイルから読み込み
+    if let Some(p) = path {
+        if p.exists() {
+            let secret = std::fs::read_to_string(p)
+                .map_err(|e| AppError::EnvironmentError(e.to_string()))?;
+            if !secret.trim().is_empty() {
+                println!("✓ JWT secret loaded from file: {}", p.display());
+                return Ok(secret.trim().to_string());
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        // 自動生成（開発・テスト用）
+        println!("⚠️  JWT secret not found. Generating a new one for this session...");
+        println!("⚠️  WARNING: This is for development/testing only!");
+        println!("⚠️  For production, set JWT_SECRET environment variable.");
+        let secret = generate_secret_key();
+        println!("✓ Generated JWT secret: {}", &secret[..16]); // 最初の16文字のみ表示
+        return Ok(secret);
+    }
+}
+
+/// 後方互換性のため（環境変数・ファイルのみ、自動生成なし）
+pub fn load_secret_key(path: Option<&Path>) -> Result<String> {
+    // 環境変数から読み込みを試みる
+    if let Ok(secret) = std::env::var("JWT_SECRET") {
+        if secret.is_empty() {
+            return Err(AppError::EnvironmentError(
+                "JWT_SECRET環境変数が空です".to_string(),
+            ));
+        }
+        return Ok(secret);
+    }
+
+    // ファイルから読み込み
+    if let Some(p) = path {
+        if !p.exists() {
+            return Err(AppError::EnvironmentError(
+                "指定されたファイルパスに署名鍵が存在しません".to_string(),
+            ));
+        }
+        let secret =
+            std::fs::read_to_string(p).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
+        if secret.trim().is_empty() {
+            return Err(AppError::EnvironmentError(
+                "鍵ファイルの内容が空です".to_string(),
+            ));
+        }
+        return Ok(secret.trim().to_string());
+    }
+
+    Err(AppError::EnvironmentError(
+        "JWT_SECRET環境変数またはファイルパスを指定してください".to_string(),
+    ))
+}
+
+/// EncodingKey を作成（署名用）
+pub fn create_encoding_key(secret: &str) -> EncodingKey {
+    EncodingKey::from_secret(secret.as_bytes())
+}
+
+/// DecodingKey を作成（検証用）
+pub fn create_decoding_key(secret: &str) -> DecodingKey {
+    DecodingKey::from_secret(secret.as_bytes())
 }
 
 //////
 //JWTの実装
 
 // ログインリクエスト構造体
-#[derive(Debug,  Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -75,22 +148,20 @@ pub enum Role {
 }
 
 // JWTヘッダー
-// 注: jsonwebtokenのencode関数ではHeader構造体を都度生成するのが一般的ですが、
-// 設定を共有するために残す場合は以下のように参照用として使えます
-static JWT_ALGORITHM: Algorithm = Algorithm::ES256;
+static JWT_ALGORITHM: Algorithm = Algorithm::HS256;
 
 // JWTペイロード(クレーム)
 #[derive(Debug, Serialize, Deserialize)]
-pub struct JWT_Claim {
+pub struct JwtClaim {
     iss: String, // JWT issuer
     aud: String, // JWTを行使する対象(APIサーバのURL)
     sub: String, // User ID
-    iat: usize, // issued at 発行日時
+    iat: usize,  // issued at 発行日時
     jti: String, // JWT ID
-    nbf: usize, // not before ここで指定した日時以前のリクエストは拒否
-    exp: usize, // 有効期限
+    nbf: usize,  // not before ここで指定した日時以前のリクエストは拒否
+    exp: usize,  // 有効期限
 
-    typ: TokenType, // トークンの種別
+    typ: TokenType,     // トークンの種別
     role: Option<Role>, // アクセストークンで認可する操作 (Optional -> Optionに修正)
 }
 
@@ -105,7 +176,8 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
     let now = Utc::now();
     let expiration = now + Duration::days(7); // 例: 7日間有効
 
-    let claims = JWT_Claim {
+    let claims = JwtClaim {
+        jti: Uuid::new_v4().to_string(),
         iss: "mimo-server".to_string(),
         aud: "mimo-client".to_string(),
         sub: req.username.clone(),
@@ -117,38 +189,43 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
     };
 
     let header = Header::new(JWT_ALGORITHM);
-    let token = encode(&header, &claims, key)?;
+    let token =
+        encode(&header, &claims, key).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
     Ok(token)
 }
 
 /// アクセストークンの発行
-/// 引数: &UserID, 要求する権限, &リフレッシュトークン
+/// 引数: &UserID, 要求する権限, &リフレッシュトークン, &秘密鍵
 /// 戻り値: Result<JWT, 任意のError>
 pub fn issue_access_token(
-    user_id: &str, 
-    role: Role, 
-    refresh_token: &str, 
-    enc_key: &EncodingKey,
-    dec_key: &DecodingKey // リフレッシュトークン検証用
+    user_id: &str,
+    role: Role,
+    refresh_token: &str,
+    secret: &str,
 ) -> Result<String> {
     // リフレッシュトークンが有効か確認
-    validate_refresh_token(user_id, refresh_token, dec_key)?;
+    let dec_key = create_decoding_key(secret);
+    validate_refresh_token(user_id, refresh_token, &dec_key)?;
 
     let now = Utc::now();
     let expiration = now + Duration::hours(1); // 例: 1時間有効
 
-    let claims = JWT_Claim {
+    let claims = JwtClaim {
+        jti: Uuid::new_v4().to_string(),
         iss: "mimo-server".to_string(),
         aud: "mimo-client".to_string(),
         sub: user_id.to_string(),
         iat: now.timestamp() as usize,
         exp: expiration.timestamp() as usize,
+        nbf: now.timestamp() as usize,
         typ: TokenType::Access,
         role: Some(role),
     };
 
     let header = Header::new(JWT_ALGORITHM);
-    let token = encode(&header, &claims, enc_key)?;
+    let enc_key = create_encoding_key(secret);
+    let token = encode(&header, &claims, &enc_key)
+        .map_err(|e| AppError::EnvironmentError(e.to_string()))?;
     Ok(token)
 }
 
@@ -161,14 +238,19 @@ pub fn issue_access_token(
 /// 戻り値: Result<(), 任意のError>
 pub fn validate_refresh_token(user_id: &str, token: &str, key: &DecodingKey) -> Result<()> {
     let validation = Validation::new(JWT_ALGORITHM);
-    let token_data = decode::<JWT_Claim>(token, key, &validation)?;
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
 
     if claims.typ != TokenType::Refresh {
-        return Err("トークン種別がRefreshではありません".into());
+        return Err(AppError::ValidationError(
+            "トークン種別がRefreshではありません".to_string(),
+        ));
     }
     if claims.sub != user_id {
-        return Err("ユーザーIDが一致しません".into());
+        return Err(AppError::ValidationError(
+            "ユーザーIDが一致しません".to_string(),
+        ));
     }
 
     Ok(())
@@ -178,25 +260,32 @@ pub fn validate_refresh_token(user_id: &str, token: &str, key: &DecodingKey) -> 
 /// 引数: &UserID, 要求する権限, &JWT
 /// 戻り値: Result<(), 任意のError>
 pub fn validate_access_token(
-    user_id: &str, 
-    required_role: Role, 
-    token: &str, 
-    key: &DecodingKey
+    user_id: &str,
+    required_role: Role,
+    token: &str,
+    key: &DecodingKey,
 ) -> Result<()> {
     let validation = Validation::new(JWT_ALGORITHM);
-    let token_data = decode::<JWT_Claim>(token, key, &validation)?;
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
 
     if claims.typ != TokenType::Access {
-        return Err("トークン種別がAccessではありません".into());
+        return Err(AppError::ValidationError(
+            "トークン種別がAccessではありません".to_string(),
+        ));
     }
     if claims.sub != user_id {
-        return Err("ユーザーIDが一致しません".into());
+        return Err(AppError::ValidationError(
+            "ユーザーIDが一致しません".to_string(),
+        ));
     }
 
     // 権限のチェック
     match claims.role {
         Some(r) if r == required_role => Ok(()),
-        _ => Err("必要な権限を持っていません".into()),
+        _ => Err(AppError::ValidationError(
+            "必要な権限を持っていません".to_string(),
+        )),
     }
 }

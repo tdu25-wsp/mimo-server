@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use chrono::Utc;
-use uuid::Uuid;
 use crate::{
     error::{AppError, Result},
-    repositories::{Memo, MemoCreateRequest, MemoRepository, MemoHandler},
+    repositories::{Memo, MemoCreateRequest, MemoHandler, MemoRepository},
 };
+use chrono::Utc;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct MemoService {
     memo_repo: Arc<MemoRepository>,
@@ -37,9 +37,8 @@ impl MemoService {
             memo_id: Uuid::new_v4().to_string(),
             content: req.content,
             user_id: req.user_id,
-            tag_id: req.tag_id.unwrap_or_default(),
-            auto_tag_id: String::new(),
-            manual_tag_id: None,
+            auto_tag_id: Some(vec!["auto_tag_123".to_string()]),
+            manual_tag_id: req.tag_id,
             share_url_token: None,
             created_at: now,
             updated_at: now,
@@ -49,10 +48,10 @@ impl MemoService {
     }
 
     // メモの更新機能
-    pub async fn update_content(&self, memo_id: &str, new_content: String) -> Result<Memo> { 
+    pub async fn update_content(&self, memo_id: &str, new_content: String) -> Result<Memo> {
         let mut memo = self.find_by_id(memo_id).await?;
-        
-        if new_content.trim().is_empty() { 
+
+        if new_content.trim().is_empty() {
             return Err(AppError::ValidationError("Content cannot be empty".into()));
         }
 

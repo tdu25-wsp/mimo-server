@@ -3,7 +3,9 @@ use axum::{
     routing::{get, patch},
 };
 
-pub fn create_settings_routes() -> Router {
+use crate::server::AppState;
+
+pub fn create_settings_routes() -> Router<AppState> {
     Router::new().route(
         "/settings",
         get(handle_get_settings).patch(handle_update_settings),

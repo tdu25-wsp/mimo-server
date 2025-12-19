@@ -1,99 +1,84 @@
 use axum::{
     Router,
-    extract::Path,
+    extract::{Path, State},
     response::Json,
-    routing::{delete, get, patch, post}, // Added patch
+    routing::{delete, get, patch, post},
 };
 use axum_extra::extract::cookie::CookieJar;
 use serde_json::json;
-use std::sync::Arc;
 
 use crate::{
     error::Result,
     repositories::{Memo, MemoCreateRequest, MemoList, MemoUpdateRequest},
-    services::MemoService,
+    server::AppState,
 };
 
-pub fn create_memo_routes(service: Arc<MemoService>) -> Router {
+pub fn create_memo_routes() -> Router<AppState> {
     Router::new()
-        .route("/memos/list/{capture}", {
-            let service = service.clone();
-            get(move |jar, path| list_memos(jar, service.clone(), path))
-        })
-        .route("/memos", {
-            let service = service.clone();
-            post(move |jar, json| create_memo(jar, service.clone(), json))
-        })
-        .route("/memos/{capture}", {
-            let service = service.clone();
-            patch(move |jar, path, json| update_memo(jar, service.clone(), path, json))
-        })
-        .route("/memos/{capture}", {
-            let service = service.clone();
-            get(move |jar, path| get_memo(jar, service.clone(), path))
-        })
-        .route("/memos/{capture}", {
-            delete(move |jar, path| delete_memo(jar, service.clone(), path))
-        })
+        .route("/memos/list/{capture}", get(list_memos))
+        .route("/memos", post(create_memo))
+        .route("/memos/{capture}", patch(update_memo))
+        .route("/memos/{capture}", get(get_memo))
+        .route("/memos/{capture}", delete(delete_memo))
 }
 
 async fn list_memos(
+    State(state): State<AppState>,
     jar: CookieJar,
-    service: Arc<MemoService>,
     Path(user_id): Path<String>,
 ) -> Result<Json<MemoList>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
 
-    let memos = service.find_by_user(&user_id).await?;
+    let memos = state.memo_service.find_by_user(&user_id).await?;
     Ok(Json(MemoList { memos }))
 }
 
 async fn create_memo(
+    State(state): State<AppState>,
     jar: CookieJar,
-    service: Arc<MemoService>,
     Json(req): Json<MemoCreateRequest>,
 ) -> Result<Json<Memo>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
 
-    let memo = service.create(req).await?;
+    let memo = state.memo_service.create(req).await?;
     Ok(Json(memo))
 }
 
 async fn get_memo(
+    State(state): State<AppState>,
     jar: CookieJar,
-    service: Arc<MemoService>,
     Path(id): Path<String>,
 ) -> Result<Json<Memo>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
 
-    let memo = service.find_by_id(&id).await?;
+    let memo = state.memo_service.find_by_id(&id).await?;
     Ok(Json(memo))
 }
 
 // 追加: メモ更新ハンドラー
 async fn update_memo(
+    State(state): State<AppState>,
     jar: CookieJar,
-    service: Arc<MemoService>,
     Path(id): Path<String>,
     Json(req): Json<MemoUpdateRequest>,
 ) -> Result<Json<Memo>> {
     let _access_token = jar.get("access_token");
-    let memo = service.update_content(&id, req.content).await?;
+    let memo = state.memo_service.update_content(&id, req.content).await?;
     Ok(Json(memo))
 }
 
 async fn delete_memo(
+    State(state): State<AppState>,
     jar: CookieJar,
-    service: Arc<MemoService>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     // TODO: Validate access token
     let _access_token = jar.get("access_token");
 
-    service.delete(&id).await?;
+    state.memo_service.delete(&id).await?;
     Ok(Json(json!({
         "status": "success",
         "message": format!("Memo deletion completed: {id}")

@@ -8,8 +8,7 @@ pub struct Memo {
     pub memo_id: String,
     pub content: String,
     pub user_id: String,
-    pub tag_id: Vec<String>,
-    pub auto_tag_id: String,
+    pub auto_tag_id: Option<Vec<String>>,
     pub manual_tag_id: Option<Vec<String>>,
     pub share_url_token: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -36,7 +35,7 @@ pub struct MemoCreateRequest {
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
     pub memo_id: String,
-    pub tag_id: Option<Vec<String>>,
+    pub tag_id: Option<String>,
     pub content: String,
 }
 

@@ -2,18 +2,34 @@ use axum::{
     Router,
     http::{HeaderValue, Method},
 };
+use mongodb::Database;
+use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
+use crate::config::Config;
 use crate::routes::{create_api_routes, create_share_routes};
-use crate::services::{MemoService, SummaryService}; // memo_serviceに加えてsummary_serviceもインポート
+use crate::services::{MemoService, SummaryService};
+
+/// アプリケーション全体で共有される状態
+#[derive(Clone)]
+pub struct AppState {
+    // DB
+    pub pg_pool: PgPool,
+    pub mongo_db: Database,
+    pub jwt_secret: String,
+    /// サービス層
+    pub memo_service: Arc<MemoService>,
+    pub summary_service: Arc<SummaryService>,
+    /// アプリケーション設定
+    pub config: Arc<Config>,
+}
 
 pub async fn start_server(
     addr: SocketAddr,
-    memo_service: Arc<MemoService>,
-    summary_service: Arc<SummaryService>, // summary_serviceを引数に追加
+    state: AppState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting Mimo Server...");
 
@@ -42,8 +58,9 @@ pub async fn start_server(
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/api", create_api_routes(memo_service, summary_service))
+        .nest("/api", create_api_routes())
         .nest("/share", create_share_routes())
+        .with_state(state)
         .layer(cors);
 
     let listener = TcpListener::bind(addr).await?;

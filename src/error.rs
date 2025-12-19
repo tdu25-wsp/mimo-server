@@ -1,7 +1,7 @@
 use axum::{
-    response::{IntoResponse, Response},
-    http::StatusCode,
     Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use serde::Serialize;
 
@@ -10,6 +10,8 @@ pub enum AppError {
     NotFound(String),
     DatabaseError(String),
     ValidationError(String),
+    HashingError(String),
+    EnvironmentError(String),
 }
 
 impl std::fmt::Display for AppError {
@@ -18,6 +20,8 @@ impl std::fmt::Display for AppError {
             AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AppError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             AppError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+            AppError::HashingError(msg) => write!(f, "Hashing error: {}", msg),
+            AppError::EnvironmentError(msg) => write!(f, "Environment error: {}", msg),
         }
     }
 }
@@ -35,6 +39,8 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::HashingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::EnvironmentError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
         (status, Json(ErrorResponse { error: message })).into_response()
