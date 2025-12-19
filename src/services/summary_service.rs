@@ -1,11 +1,8 @@
 use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
-use reqwest::Client; // HTTPクライアント用
-use std::env; // 環境変数取得用
-use serde_json::json; // JSON構築用
 use crate::{
-    error::{Result, AppError}, // エラーハンドリング用
+    error::Result,
     repositories::{AISummary, SummaryRepository, summary::SummaryHandler, MemoRepository, MemoHandler, Memo},
 };
 
@@ -40,14 +37,8 @@ impl SummaryService {
                 }
             }
         }
-
-    // メモが空ならAPIを呼ばずにエラーを返す
-    if memos.is_empty() {
-        return Err(AppError::ValidationError("No memos to summarize".to_string()));
-    }
-
         // 1. 要約ロジックの実行
-        let summary_content = self.call_openai_api(&memos).await?; // 外部API呼び出し部分
+        let summary_content = self.generate_summary_content(&memos);
 
         // 2. DBへの保存データの構築
         let now = Utc::now();
@@ -65,65 +56,18 @@ impl SummaryService {
         self.summary_repo.create(summary).await
     }
 
-    // OpenAI APIを呼び出す関数
-async fn call_openai_api(&self, memos: &[Memo]) -> Result<String> {
-     // AIに読ませるために、複数のメモを一つのテキストに整形する
-    let input_text = memos.iter() 
-        .map(|memo| format!("- {}", memo.content)) // 各メモをハイフン付きの箇条書き形式に変換
-        .collect::<Vec<String>>() // ベクタに収集
-        .join("\n"); // 改行で結合して一つの文字列にする
-    
-    // debug用出力
-    println!("AIに送るテキスト:\n{}", input_text);
-
-    // AIに送るプロンプトを作成
-    let prompt = format!(
-        "以下の箇条書きのメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。\n\n[メモ内容]\n{}",
-        input_text
-    );
-
-    // APIキーの取得
-    let api_key = env::var("OPENAI_API_KEY") //環境変数から取得
-        .map_err(|_| AppError::ConfigError("OPENAI_API_KEY is not set".to_string()))?; 
-
-    let client = Client::new(); // reqwestのHTTPクライアントを作成
-    let response = client
-        .post("https://api.openai.com/v1/chat/completions") // URL
-        .header("Authorization", format!("Bearer {}", api_key)) // APIキー
-        .json(&json!({ //依頼内容
-            "model": "gpt-4o-mini", // 使用するモデル 一旦miniにします
-            "messages": [
-                {"role": "system", "content": "you are a  assistant that summarizes user memos into coherent journal entries."}, // AIの役割
-                {"role": "user", "content": prompt} // ユーザープロンプト
-            ],
-            "max_tokens": 500 // 最大トークン数(返事の長さ)
-        }))
-        .send()
-        .await
-        .map_err(|e| AppError::ExternalServiceError(format!("Failed to send request: {}", e)))?;
-
-    // ステータスコード確認
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
-        return Err(AppError::ExternalServiceError(
-            format!("OpenAI API error: status={}, body={}", status, error_text)
-        ));
-    }
-
-    // レスポンスのパース
-    let response_json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse response: {}", e)))?;
-
-    // 要約テキストの抽出
-    let content = response_json["choices"]
-        .get(0) // Json形式での"choices" リストの 0番目（最初）を見る
-        .and_then(|choice| choice["message"]["content"].as_str()) // "message"の"content"を文字列として取得
-        .ok_or_else(|| AppError::ExternalServiceError("Invalid response format from OpenAI".to_string()))?
-        .to_string();
-
-    Ok(content)
+    // 要約ロジック（実際にはOpenAI APIなどを呼ぶ箇所）
+    fn generate_summary_content(&self, memos: &[Memo]) -> String {
+        // Mock Implementation
+        // 外部APIを叩けないため、ここでは単純な結合
+        let combined_content: Vec<String> = memos.iter()
+            .map(|m| format!("- {}", m.content))
+            .collect();
+        
+        format!(
+            "【AI Summary Mock】\nTotal {} memos summarized.\n\nKey Points:\n{}",
+            memos.len(),
+            combined_content.join("\n")
+        )
     }
 }
