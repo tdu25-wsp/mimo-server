@@ -14,9 +14,9 @@ mod services;
 
 use auth::load_or_generate_secret_key;
 use config::Config;
-use repositories::{MemoRepository, SummaryRepository};
+use repositories::{MemoRepository, SummaryRepository, TagRepository};
 use server::AppState;
-use services::{MemoService, SummaryService};
+use services::{MemoService, SummaryService, TagService};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -65,6 +65,8 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(SummaryRepository::new(mongo_db.clone())),
         Arc::new(MemoRepository::new(mongo_db.clone())),
     ));
+    let tag_repo = Arc::new(TagRepository::new(pg_pool.clone()));
+    let tag_service = Arc::new(TagService::new(tag_repo));
 
     // AppState の構築
     let state = AppState {
@@ -73,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         jwt_secret,
         memo_service,
         summary_service,
+        tag_service,
         config: Arc::new(config.clone()),
     };
 

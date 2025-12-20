@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize, de};
 use serde_json::{Value, json};
 
 use crate::server::AppState;
+use crate::repositories::{Tag, TagList};
 
 #[derive(Serialize, Deserialize)]
 struct Tags {
@@ -18,7 +19,9 @@ struct Tags {
 }
 
 pub fn create_tags_routes() -> Router<AppState> {
-    Router::new().route("/tags", post(handle_create_tag)).route(
+    Router::new().route("/tags", post(handle_create_tag))
+    .route("/tags/recommend", post(handle_recommend_tag))
+    .route(
         "/tags/{capture}",
         get(handle_get_tag_list)
             .patch(handle_update_tag)
@@ -27,23 +30,34 @@ pub fn create_tags_routes() -> Router<AppState> {
 }
 
 //// ハンドラ関数
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Tag {
-    tag_id: String,
-    user_id: String,
-    name: String,
-    color_code: String,
 
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+#[derive(Deserialize)]
+struct RecommendTagRequest {
+    content: String,
+}
+// タグ推薦ハンドラ
+async fn handle_recommend_tag(
+    State(state): State<AppState>, //
+    jar: CookieJar,
+    extract::Json(req): extract::Json<RecommendTagRequest>, // リクエストボディの抽出
+) -> impl IntoResponse {
+    // ユーザーIDはいったん固定します(TODO)
+    let user_id = "user123";
+
+    match state.tag_service.recommend_tag(user_id, &req.content).await { // サービス層の推薦メソッドを呼び出し
+        Ok(Some(tag_id)) => Json(json!({
+            "status": "success", // ステータス
+            "recommended_tag_id": tag_id // 推薦されたタグID
+        })).into_response(), // 成功レスポンス
+        Ok(None) => Json(json!({
+            "status": "success",
+            "message": "No suitable tag found",
+            "recommended_tag_id": null
+        })).into_response(), // タグが見つからなかった場合
+        Err(e) => e.into_response(),
+    }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TagList {
-    tags: Vec<Tag>,
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,23 +67,22 @@ struct CreateTagRequest {
 }
 
 async fn handle_create_tag(
+    State(state): State<AppState>, 
     jar: CookieJar,
-    req: extract::Json<CreateTagRequest>,
+    extract::Json(req): extract::Json<CreateTagRequest>,
 ) -> impl IntoResponse {
-    // TODO: Write tag to DB
+    let _access_token = jar.get("access_token");
+    // 一旦ユーザーIDは固定します(TODO)
+    let user_id = "user123".to_string();
 
-    Json(json!({
-        "message": "Tag created successfully",
-        "tag": Tag {
-            tag_id: "tag_123".to_string(),
-            user_id: "user_456".to_string(),
-            name: req.name.clone(),
-            color_code: req.color_code.clone(),
-            created_at: Utc::now(),
-            updated_at: Utc::now()
-            }
-        }
-    ))
+    // Serviceを呼び出してDBに保存
+    match state.tag_service.create_tag(user_id, req.name, req.color_code).await {
+        Ok(tag) => Json(json!({
+            "message": "Tag created successfully",
+            "tag": tag
+        })).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn handle_get_tag_list(jar: CookieJar) -> impl IntoResponse {
