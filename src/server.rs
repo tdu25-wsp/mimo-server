@@ -11,7 +11,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::routes::{create_api_routes, create_share_routes};
-use crate::services::{MemoService, SummaryService};
+use crate::services::{MemoService, SummaryService, TagService};
 
 /// アプリケーション全体で共有される状態
 #[derive(Clone)]
@@ -23,6 +23,7 @@ pub struct AppState {
     /// サービス層
     pub memo_service: Arc<MemoService>,
     pub summary_service: Arc<SummaryService>,
+    pub tag_service: Arc<TagService>,
     /// アプリケーション設定
     pub config: Arc<Config>,
 }

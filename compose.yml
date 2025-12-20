@@ -16,6 +16,7 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=5050
       - LOG_LEVEL=info
+      - JWT_SERCRET=${JWT_SERCRET}
     depends_on:
       postgres:
         condition: service_healthy

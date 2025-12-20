@@ -9,4 +9,4 @@ pub use memo::{
 pub use summary::{
     AISummary, SummaryCreateRequest, SummaryHandler, SummaryList, SummaryRepository,
 }; // Re-exporting AISummary, SummaryRepository, and SummaryList
-pub use tag::{Tag, TagRepository};
+pub use tag::{Tag, TagRepository, TagHandler, TagList, CreateTagRequest ,UpdateTagRequest}; // Re-exporting CreateTagRequest and UpdateTagRequest
