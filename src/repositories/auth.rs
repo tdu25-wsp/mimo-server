@@ -43,6 +43,7 @@ pub struct UserResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct UserCreateRequest {
+    pub user_id: String,
     pub email: String,
     pub display_name: String,
     pub password: String,

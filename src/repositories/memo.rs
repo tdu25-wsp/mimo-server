@@ -35,7 +35,7 @@ pub struct MemoCreateRequest {
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
     pub memo_id: String,
-    pub tag_id: Option<String>,
+    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 
