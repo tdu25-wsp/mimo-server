@@ -25,19 +25,9 @@ impl TagService {
     pub async fn create_tag(
         &self,
         user_id: String,
-        name: String,
-        color_code: String,
+        req: CreateTagRequest,
     ) -> Result<Tag> {
-        let now = Utc::now();
-        let tag = Tag {
-            tag_id: Uuid::new_v4().to_string(),
-            user_id,
-            name,
-            color_code,
-            created_at: now,
-            updated_at: now,
-        };
-        self.tag_repo.create(tag).await
+        self.tag_repo.create(&user_id, req).await
     }
 
     pub async fn update_tag(&self, tag: Tag) -> Result<Tag> {

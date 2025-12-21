@@ -77,14 +77,7 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(SummaryRepository::new(mongo_db.clone())),
         Arc::new(MemoRepository::new(mongo_db.clone())),
     ));
-    let email_service = Arc::new(services::email_service::EmailService::new(
-        &config.email.smtp_host,
-        config.email.smtp_port,
-        &config.email.from_name,
-        &config.email.from_email,
-        &config.email.smtp_username,
-        &config.email.smtp_password,
-    )?);
+    let email_service = Arc::new(services::email_service::EmailService::from_env()?);
     let verification_store = Arc::new(services::verification_store::VerificationStore::new());
     let rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new(5, 60)); // 5回/60秒
     let auth_service = Arc::new(AuthService::new(Arc::new(
@@ -98,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     // AppState の構築
     let state = AppState {
+        jwt_decoding_key: auth::create_decoding_key(&jwt_secret),
         jwt_secret,
         auth_service,
         memo_service,
