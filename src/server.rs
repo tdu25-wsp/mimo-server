@@ -2,7 +2,7 @@ use axum::{
     Router,
     http::{HeaderValue, Method},
 };
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
@@ -50,12 +50,14 @@ pub async fn start_server(
 
     let cors = CorsLayer::new()
         .allow_origin(allowed_origins)
+        .allow_credentials(true)
         .allow_methods(vec![
             Method::GET,
             Method::POST,
             Method::PATCH,
             Method::DELETE,
-        ]);
+        ])
+        .max_age(Duration::from_secs(180));
 
     println!("Creating routes...");
     let app = Router::new()

@@ -9,14 +9,21 @@ services:
       - "5050:5050"
     restart: unless-stopped
     environment:
-      - POSTGRES_CONNECTION_URL=postgresql://mimo:mimo_password@postgres:5432
-      - POSTGRES_DB_NAME=mimo_db
-      - MONGODB_CONNECTION_URI=mongodb://mimo:mimo_password@mongodb:27017
-      - MONGODB_DB_NAME=mimo_db
+      - POSTGRES_CONNECTION_URL=postgresql://${POSTGRES_USER:-mimo}:${POSTGRES_PASSWORD}@postgres:5432
+      - POSTGRES_DB_NAME=${POSTGRES_DB_NAME:-mimo_db}
+      - MONGODB_CONNECTION_URI=mongodb://${MONGO_USER:-mimo}:${MONGO_PASSWORD}@mongodb:27017
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-mimo_db}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=5050
       - LOG_LEVEL=info
-      - JWT_SERCRET=${JWT_SERCRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,15 +37,15 @@ services:
     container_name: mimo-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=mimo
-      - POSTGRES_PASSWORD=mimo_password
-      - POSTGRES_DB=mimo_db
+      - POSTGRES_USER=${POSTGRES_USER:-mimo}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB_NAME:-mimo_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mimo"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mimo}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,9 +55,9 @@ services:
     container_name: mimo-mongodb
     restart: unless-stopped
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=mimo
-      - MONGO_INITDB_ROOT_PASSWORD=mimo_password
-      - MONGO_INITDB_DATABASE=mimo_db
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-mimo}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGODB_DB_NAME:-mimo_db}
     ports:
       - "27017:27017"
     volumes:

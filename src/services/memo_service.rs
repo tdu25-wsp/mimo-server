@@ -30,9 +30,7 @@ impl MemoService {
 
     pub async fn create(&self, req: MemoCreateRequest) -> Result<Memo> {
         // バリデーション
-        if req.content.trim().is_empty() {
-            return Err(AppError::ValidationError("Content cannot be empty".into()));
-        }
+        validate_memo_content(&req.content)?;
 
         // タグの自動推薦を試みる
         let auto_tag_id = match self.tag_service.recommend_tag(&req.user_id, &req.content).await {
@@ -59,9 +57,7 @@ impl MemoService {
     pub async fn update_content(&self, memo_id: &str, new_content: String) -> Result<Memo> {
         let mut memo = self.find_by_id(memo_id).await?;
 
-        if new_content.trim().is_empty() {
-            return Err(AppError::ValidationError("Content cannot be empty".into()));
-        }
+        validate_memo_content(&new_content)?;
 
         memo.content = new_content;
         memo.updated_at = Utc::now();
@@ -73,4 +69,15 @@ impl MemoService {
         self.find_by_id(memo_id).await?;
         self.memo_repo.delete(memo_id).await
     }
+}
+
+fn validate_memo_content(content: &str) -> Result<()> {
+    let maximum_length = 512; // 最大文字数の例
+    if content.trim().is_empty() {
+        return Err(AppError::ValidationError("Content cannot be empty".into()));
+    }
+    if content.len() > maximum_length {
+        return Err(AppError::ValidationError(format!("Content cannot exceed {} characters", maximum_length)));
+    }
+    Ok(())
 }

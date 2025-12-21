@@ -7,7 +7,47 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 //////
-// パスワード関係の実装
+// ユーザ検証関係の実装
+pub fn validate_email_format(email: &str) -> Result<()> {
+    let email_regex = regex::Regex::new(
+        r"(?i)^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+    ).map_err(|e| AppError::ValidationError(e.to_string()))?;
+
+    if !email_regex.is_match(email) {
+        return Err(AppError::ValidationError(
+            "無効なメールアドレス形式です".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn validate_display_name_format(name: &str) -> Result<()> {
+    let length_min = 1;
+    let length_max = 50;
+    if name.len() < length_min || name.len() > length_max {
+        return Err(AppError::ValidationError(format!(
+            "表示名は{}文字以上{}文字以下である必要があります",
+            length_min, length_max
+        )));
+    }
+
+    Ok(())
+}
+
+pub fn validate_user_id_format(user_id: &str) -> Result<()> {
+    let user_id_regex = regex::Regex::new(r"^[a-zA-Z0-9_-]{3,32}$")
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
+
+    if !user_id_regex.is_match(user_id) {
+        return Err(AppError::ValidationError(
+            "ユーザーIDは3〜32文字の英数字、アンダースコア、ハイフンのみ使用できます".into(),
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn validate_password_format(password: &str) -> Result<()> {
     let length_min = 8;
     let length_max = 256;
@@ -20,6 +60,8 @@ pub fn validate_password_format(password: &str) -> Result<()> {
 
     Ok(())
 }
+
+
 
 //////
 // 共通鍵（HMAC）認証関係の実装
