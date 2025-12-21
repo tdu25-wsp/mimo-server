@@ -170,7 +170,7 @@ impl VerificationStore {
 
     /// 期限切れデータのクリーンアップ
     fn cleanup_expired(
-        codes: &Arc<DashMap<String, VerificationCode>>,
+        codes: &Arc<DashMap<(String, VerificationPurpose), VerificationCode>>,
         tokens: &Arc<DashMap<String, RegistrationToken>>,
     ) {
         let now = Utc::now();

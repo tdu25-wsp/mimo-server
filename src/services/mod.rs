@@ -2,9 +2,9 @@ mod memo_service;
 mod summary_service;
 mod tag_service;
 mod auth_service;
-mod email_service;
-mod verification_store;
-mod rate_limiter;
+pub mod email_service;
+pub mod verification_store;
+pub mod rate_limiter;
 
 pub use memo_service::MemoService;
 pub use summary_service::SummaryService;

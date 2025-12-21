@@ -230,7 +230,8 @@ pub fn issue_access_token(
 
 /// トークンからユーザーIDを抽出（型チェックなし）
 pub fn extract_user_id_from_token(token: &str, key: &DecodingKey) -> Result<String> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     Ok(token_data.claims.sub)
@@ -238,7 +239,8 @@ pub fn extract_user_id_from_token(token: &str, key: &DecodingKey) -> Result<Stri
 
 /// トークンからJTIを抽出
 pub fn extract_jti_from_token(token: &str, key: &DecodingKey) -> Result<String> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     Ok(token_data.claims.jti)
@@ -248,7 +250,8 @@ pub fn extract_jti_from_token(token: &str, key: &DecodingKey) -> Result<String> 
 /// 引数: &UserID, &JWT
 /// 戻り値: Result<(), 任意のError>
 pub fn validate_refresh_token(user_id: &str, token: &str, key: &DecodingKey) -> Result<()> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
@@ -276,7 +279,8 @@ pub fn validate_access_token(
     token: &str,
     key: &DecodingKey,
 ) -> Result<()> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
@@ -331,7 +335,8 @@ pub fn issue_registration_token(email: &str, secret: &str) -> Result<String> {
 /// 引数: トークン, 期待されるメールアドレス, 秘密鍵
 /// 戻り値: Result<String, AppError> (成功時はJTI)
 pub fn validate_registration_token(token: &str, email: &str, key: &DecodingKey) -> Result<String> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
@@ -380,7 +385,8 @@ pub fn issue_password_reset_token(email: &str, secret: &str) -> Result<String> {
 /// 引数: トークン, 期待されるメールアドレス, 秘密鍵
 /// 戻り値: Result<String, AppError> (成功時はJTI)
 pub fn validate_password_reset_token(token: &str, email: &str, key: &DecodingKey) -> Result<String> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;

@@ -8,6 +8,9 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
+    pub jwt: JwtConfig,
+    pub email: EmailConfig,
+    pub gemini: GeminiConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -39,6 +42,26 @@ pub struct LoggingConfig {
     pub level: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct JwtConfig {
+    pub secret: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct EmailConfig {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub from_email: String,
+    pub from_name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GeminiConfig {
+    pub api_key: String,
+}
+
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
         // 環境変数から読み込む場合
@@ -67,6 +90,30 @@ impl Config {
                 logging: LoggingConfig {
                     level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
                 },
+                jwt: JwtConfig {
+                    secret: env::var("JWT_SECRET")
+                        .context("JWT_SECRET must be set when using env vars")?,
+                },
+                email: EmailConfig {
+                    smtp_host: env::var("SMTP_HOST")
+                        .context("SMTP_HOST must be set when using env vars")?,
+                    smtp_port: env::var("SMTP_PORT")
+                        .unwrap_or_else(|_| "587".to_string())
+                        .parse()
+                        .context("Invalid SMTP_PORT")?,
+                    smtp_username: env::var("SMTP_USERNAME")
+                        .context("SMTP_USERNAME must be set when using env vars")?,
+                    smtp_password: env::var("SMTP_PASSWORD")
+                        .context("SMTP_PASSWORD must be set when using env vars")?,
+                    from_email: env::var("SMTP_FROM_EMAIL")
+                        .unwrap_or_else(|_e| env::var("SMTP_USERNAME").unwrap_or_default()),
+                    from_name: env::var("SMTP_FROM_NAME")
+                        .unwrap_or_else(|_| "Mimo Server".to_string()),
+                },
+                gemini: GeminiConfig {
+                    api_key: env::var("GEMINI_API_KEY")
+                        .unwrap_or_else(|_| String::new()),
+                },
             });
         }
 
@@ -75,7 +122,35 @@ impl Config {
             "Failed to read Config.toml. Use environment variables or provide Config.toml",
         )?;
 
-        let config: Config = toml::from_str(&config_str).context("Failed to parse Config.toml")?;
+        let mut config: Config = toml::from_str(&config_str).context("Failed to parse Config.toml")?;
+        
+        // 環境変数があれば優先する
+        if let Ok(secret) = env::var("JWT_SECRET") {
+            config.jwt.secret = secret;
+        }
+        if let Ok(host) = env::var("SMTP_HOST") {
+            config.email.smtp_host = host;
+        }
+        if let Ok(port) = env::var("SMTP_PORT") {
+            if let Ok(port_num) = port.parse() {
+                config.email.smtp_port = port_num;
+            }
+        }
+        if let Ok(username) = env::var("SMTP_USERNAME") {
+            config.email.smtp_username = username;
+        }
+        if let Ok(password) = env::var("SMTP_PASSWORD") {
+            config.email.smtp_password = password;
+        }
+        if let Ok(from_email) = env::var("SMTP_FROM_EMAIL") {
+            config.email.from_email = from_email;
+        }
+        if let Ok(from_name) = env::var("SMTP_FROM_NAME") {
+            config.email.from_name = from_name;
+        }
+        if let Ok(api_key) = env::var("GEMINI_API_KEY") {
+            config.gemini.api_key = api_key;
+        }
 
         Ok(config)
     }

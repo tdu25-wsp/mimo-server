@@ -13,7 +13,31 @@ pub struct EmailService {
 }
 
 impl EmailService {
-    /// 環境変数からSMTP設定を読み込んで初期化
+    /// Configから初期化
+    pub fn from_config(
+        smtp_host: &str,
+        smtp_port: u16,
+        smtp_username: &str,
+        smtp_password: &str,
+        from_email: &str,
+        from_name: &str,
+    ) -> Result<Self> {
+        let credentials = Credentials::new(smtp_username.to_string(), smtp_password.to_string());
+        
+        let smtp_transport = SmtpTransport::starttls_relay(smtp_host)
+            .map_err(|e| AppError::EnvironmentError(format!("SMTP接続エラー: {}", e)))?
+            .port(smtp_port)
+            .credentials(credentials)
+            .build();
+        
+        Ok(Self {
+            smtp_transport,
+            from_email: from_email.to_string(),
+            from_name: from_name.to_string(),
+        })
+    }
+
+    /// 環境変数からSMTP設定を読み込んで初期化（後方互換性のため残す）
     pub fn from_env() -> Result<Self> {
         let smtp_host = env::var("SMTP_HOST")
             .map_err(|_| AppError::EnvironmentError("SMTP_HOST環境変数が設定されていません".to_string()))?;

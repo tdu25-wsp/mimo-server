@@ -8,6 +8,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use time;
 
 use crate::server::AppState;
 use crate::repositories::auth::UserCreateRequest;
@@ -233,7 +234,7 @@ async fn handle_verify_email(
         .http_only(true)
         .secure(false)
         .same_site(SameSite::Lax)
-        .max_age(cookie::time::Duration::minutes(15))
+        .max_age(time::Duration::minutes(15))
         .build();
 
     Ok((
@@ -388,7 +389,7 @@ async fn handle_verify_reset_code(
         .http_only(true)
         .secure(false)
         .same_site(SameSite::Lax)
-        .max_age(cookie::time::Duration::minutes(30))
+        .max_age(time::Duration::minutes(30))
         .build();
 
     Ok((

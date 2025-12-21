@@ -13,9 +13,8 @@ use serde_json::{Value, json};
 
 use crate::auth::extract_user_id_from_token;
 use crate::server::AppState;
-use crate::repositories::{Tag, TagList};
-use crate::error::{AppError, Result};
 use crate::repositories::{Tag, TagList, CreateTagRequest, UpdateTagRequest};
+use crate::error::{AppError, Result};
 
 pub fn create_tags_routes() -> Router<AppState> {
     Router::new()

@@ -1,6 +1,6 @@
 -- ユーザテーブル
 CREATE TABLE IF NOT EXISTS users (
-    user_id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) PRIMARY KEY,
     display_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -15,7 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 -- タグテーブル
 CREATE TABLE IF NOT EXISTS tags (
     tag_id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    user_id VARCHAR(255) REFERENCES users(user_id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     UNIQUE(user_id, name),
     color_code VARCHAR(7) NOT NULL,

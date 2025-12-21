@@ -1,21 +1,21 @@
 use crate::{
     error::{Result, AppError},
-    repositories::{Tag, TagRepository, tag::TagHandler}, // TagHandlerトレイトをインポート
+    repositories::{Tag, TagRepository, CreateTagRequest, UpdateTagRequest, tag::TagHandler}, // TagHandlerトレイトをインポート
 };
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 use reqwest::Client; // HTTPクライアント
-use std::env; // 環境変数
 use serde_json::json; // JSONマクロ
 
 pub struct TagService {
     tag_repo: Arc<TagRepository>, // MongoTagRepository → TagRepositoryに変更
+    gemini_api_key: String,
 }
 
 impl TagService {
-    pub fn new(tag_repo: Arc<TagRepository>) -> Self {
-        Self { tag_repo }
+    pub fn new(tag_repo: Arc<TagRepository>, gemini_api_key: String) -> Self {
+        Self { tag_repo, gemini_api_key }
     }
 
     pub async fn get_tags_by_user(&self, user_id: &str) -> Result<Vec<Tag>> {
@@ -24,18 +24,18 @@ impl TagService {
 
     pub async fn create_tag(
         &self,
-        user_id: String,
+        user_id: &str,
         req: CreateTagRequest,
     ) -> Result<Tag> {
         self.tag_repo.create(&user_id, req).await
     }
 
-    pub async fn update_tag(&self, tag: Tag) -> Result<Tag> {
-        self.tag_repo.update(tag).await
+    pub async fn update_tag(&self, user_id: &str, tag_id: &str, req: UpdateTagRequest) -> Result<Tag> {
+        self.tag_repo.update(user_id, tag_id, req).await
     }
 
-    pub async fn delete_tag(&self, tag_id: &str) -> Result<()> {
-        self.tag_repo.delete(tag_id).await
+    pub async fn delete_tag(&self, user_id: &str, tag_id: &str) -> Result<()> {
+        self.tag_repo.delete(user_id, tag_id).await
     }
 
     /// タグ推薦機能
@@ -56,13 +56,14 @@ impl TagService {
             memo_content, tags_str
         );
 
-        // APIキーの取得
-        let api_key = env::var("GEMINI_API_KEY")
-            .map_err(|_| AppError::ConfigError("GEMINI_API_KEY is not set".to_string()))?;
+        // APIキーのチェック
+        if self.gemini_api_key.is_empty() {
+            return Err(AppError::ConfigError("GEMINI_API_KEY is not configured".to_string()));
+        }
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
-            api_key
+            self.gemini_api_key
         );
         
         let client = Client::new();

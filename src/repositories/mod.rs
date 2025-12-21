@@ -11,4 +11,4 @@ pub use summary::{
 }; // Re-exporting AISummary, SummaryRepository, and SummaryList
 pub use tag::{Tag, TagRepository, TagHandler, TagList, CreateTagRequest ,UpdateTagRequest}; // Re-exporting CreateTagRequest and UpdateTagRequest
 
-pub use auth::{AuthRepository, AuthHandler, User, UserCreateRequest, UserLoginRequest};
+pub use auth::{AuthRepository, UserCreateRequest, UserLoginRequest, UserResponse, UserUpdateRequest};

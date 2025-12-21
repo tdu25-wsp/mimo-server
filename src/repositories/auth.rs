@@ -159,14 +159,13 @@ impl AuthRepository {
 
     /// ユーザーを作成
     pub async fn create_user(&self, user: UserCreateRequest) -> Result<UserResponse> {
-        let user_id = uuid::Uuid::new_v4().to_string();
         let password_hash = Self::hash_password(&user.password)?;
         let now = chrono::Utc::now();
         
         let row = sqlx::query(
             "INSERT INTO users (user_id, email, display_name, password_hash, created_at, updated_at, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id, email, display_name, created_at, updated_at, is_active"
         )
-        .bind(&user_id)
+        .bind(&user.user_id)
         .bind(&user.email)
         .bind(&user.display_name)
         .bind(&password_hash)

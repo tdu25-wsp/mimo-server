@@ -1,7 +1,7 @@
 use governor::{
-    clock::DefaultClock,
-    state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter as GovernorRateLimiter,
+    clock::{Clock, DefaultClock},
+    state::keyed::DefaultKeyedStateStore,
+    Quota, RateLimiter,
 };
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -9,23 +9,23 @@ use std::time::Duration;
 
 /// メール送信用のレートリミッター設定
 pub struct EmailRateLimiter {
-    // メールアドレスごとのレート制限（1時間に3回まで）
-    per_email: Arc<GovernorRateLimiter<String, InMemoryState, DefaultClock>>,
-    // IPアドレスごとのレート制限（1時間に10回まで）
-    per_ip: Arc<GovernorRateLimiter<String, InMemoryState, DefaultClock>>,
+    // メールアドレスごとのレート制限（15分間に2回まで）
+    per_email: Arc<RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>>,
+    // IPアドレスごとのレート制限（1時間に5回まで）
+    per_ip: Arc<RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>>,
 }
 
 impl EmailRateLimiter {
     pub fn new() -> Self {
         // 15分に2回の制限（= 1時間に8回相当だが、バースト防止）
-        let email_quota = Quota::within(Duration::from_secs(15 * 60))
+        let email_quota = Quota::with_period(Duration::from_secs(15 * 60))
             .unwrap()
             .allow_burst(NonZeroU32::new(2).unwrap());
-        let per_email = Arc::new(GovernorRateLimiter::keyed(email_quota));
+        let per_email = Arc::new(RateLimiter::dashmap(email_quota));
 
         // 1時間に5回の制限
         let ip_quota = Quota::per_hour(NonZeroU32::new(5).unwrap());
-        let per_ip = Arc::new(GovernorRateLimiter::keyed(ip_quota));
+        let per_ip = Arc::new(RateLimiter::dashmap(ip_quota));
 
         Self { per_email, per_ip }
     }
