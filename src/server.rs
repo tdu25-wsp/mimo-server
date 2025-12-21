@@ -20,6 +20,7 @@ pub struct AppState {
     pub memo_service: Arc<MemoService>,
     pub summary_service: Arc<SummaryService>,
     pub tag_service: Arc<TagService>,
+    pub tag_service: Arc<TagService>,
     /// アプリケーション設定
     pub config: Arc<Config>,
 }

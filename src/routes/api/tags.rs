@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize, de};
 use serde_json::{Value, json};
 
 use crate::server::AppState;
+use crate::repositories::{Tag, TagList};
 use crate::error::Result;
 use crate::repositories::{Tag, TagList, CreateTagRequest, UpdateTagRequest};
 
@@ -25,6 +26,7 @@ pub fn create_tags_routes() -> Router<AppState> {
 
 //// ハンドラ関数
 async fn handle_create_tag(
+    State(state): State<AppState>, 
     jar: CookieJar,
     Path(user_id): Path<String>,
     state: State<AppState>,

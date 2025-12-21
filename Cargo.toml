@@ -23,6 +23,7 @@ toml = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6.6", features = ["cors"] }
 uuid = { version = "1.11", features = ["v4"] }
+reqwest = { version = "0.11", features = ["json"] }
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-native-tls", "smtp-transport", "builder"] }
 dashmap = "6.1"
 governor = "0.6"
