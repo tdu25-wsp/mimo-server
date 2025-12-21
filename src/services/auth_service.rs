@@ -1,18 +1,21 @@
 use crate::repositories::auth::{AuthRepository, UserCreateRequest, UserLoginRequest, UserResponse, UserUpdateRequest};
+use crate::repositories::tag::CreateTagRequest;
+use crate::services::TagService;
 use crate::error::{Result, AppError};
 use crate::auth::{
     Role, issue_access_token, issue_refresh_token, 
     issue_registration_token, issue_password_reset_token,
     validate_registration_token, validate_password_reset_token,
-    create_decoding_key
+    create_decoding_key,
+    validate_email_format, validate_display_name_format, validate_user_id_format, validate_password_format,
 };
 use crate::services::{EmailService, VerificationStore, EmailRateLimiter};
 use crate::services::verification_store::VerificationPurpose;
 use std::sync::Arc;
-use uuid::Uuid;
 
 pub struct AuthService {
     auth_repo: Arc<AuthRepository>,
+    tag_service: Arc<TagService>,
     jwt_secret: String,
     email_service: Arc<EmailService>,
     verification_store: Arc<VerificationStore>,
@@ -22,6 +25,7 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(
         auth_repo: Arc<AuthRepository>,
+        tag_service: Arc<TagService>,
         jwt_secret: String,
         email_service: Arc<EmailService>,
         verification_store: Arc<VerificationStore>,
@@ -29,6 +33,7 @@ impl AuthService {
     ) -> Self {
         Self {
             auth_repo,
+            tag_service,
             jwt_secret,
             email_service,
             verification_store,
@@ -122,6 +127,9 @@ impl AuthService {
 
     /// ステップ1: メールアドレスで登録開始（認証コード送信）
     pub async fn start_registration(&self, email: String, client_ip: Option<&str>) -> Result<()> {
+        // メールアドレスのバリデーション
+        validate_email_format(&email)?;
+        
         self.send_verification_code_internal(
             &email,
             VerificationPurpose::Registration,
@@ -155,6 +163,14 @@ impl AuthService {
         registration_token: String,
         user: UserCreateRequest
     ) -> Result<(String, String, UserResponse)> {
+        // 入力バリデーション
+        validate_email_format(&user.email)?;
+        validate_user_id_format(&user.user_id)?;
+        validate_password_format(&user.password)?;
+        if let Some(ref name) = user.display_name {
+            validate_display_name_format(name)?;
+        }
+
         // JWTトークンを検証（有効期限、署名、メールアドレスを確認）
         let key = create_decoding_key(&self.jwt_secret);
         validate_registration_token(&registration_token, &user.email, &key)?;
@@ -170,6 +186,9 @@ impl AuthService {
         
         // ユーザー作成
         let user_response = self.auth_repo.register(user).await?;
+        
+        // デフォルトタグを作成
+        self.create_default_tags(&user_response.user_id).await?;
         
         // 登録用トークンを無効化
         self.verification_store.invalidate_registration_token(&registration_token);
@@ -238,13 +257,21 @@ impl AuthService {
 
     /// ユーザー情報更新
     pub async fn update_user(&self, user_id: &str, req: UserUpdateRequest) -> Result<UserResponse> {
-        // メールアドレスの重複チェック（変更がある場合）
+        // 入力バリデーション
         if let Some(ref email) = req.email {
+            validate_email_format(email)?;
+            // メールアドレスの重複チェック
             if let Some(existing_user) = self.auth_repo.find_user_by_email(email).await? {
                 if existing_user.user_id != user_id {
                     return Err(AppError::ValidationError("Email address is already in use".to_string()));
                 }
             }
+        }
+        if let Some(ref name) = req.display_name {
+            validate_display_name_format(name)?;
+        }
+        if let Some(ref password) = req.password {
+            validate_password_format(password)?;
         }
         
         self.auth_repo.update_user(user_id, req).await
@@ -257,6 +284,9 @@ impl AuthService {
 
     /// パスワードリセット
     pub async fn reset_password(&self, user_id: &str, old_password: &str, new_password: &str) -> Result<()> {
+        // 新しいパスワードのバリデーション
+        validate_password_format(new_password)?;
+        
         // 既存パスワードの検証
         let user = self.auth_repo.find_user_by_id(user_id).await?
             .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
@@ -274,6 +304,9 @@ impl AuthService {
 
     /// ステップ1: パスワードリセット開始（確認コード送信）
     pub async fn forgot_password(&self, email: &str, client_ip: Option<&str>) -> Result<()> {
+        // メールアドレスのバリデーション
+        validate_email_format(email)?;
+        
         self.send_verification_code_internal(
             email,
             VerificationPurpose::PasswordReset,
@@ -303,6 +336,9 @@ impl AuthService {
 
     /// ステップ3: パスワードリセット完了
     pub async fn complete_password_reset(&self, reset_token: &str, email: &str, new_password: &str) -> Result<()> {
+        // 新しいパスワードのバリデーション
+        validate_password_format(new_password)?;
+        
         // JWTトークンを検証（有効期限、署名、メールアドレスを確認）
         let key = create_decoding_key(&self.jwt_secret);
         validate_password_reset_token(reset_token, email, &key)?;
@@ -332,5 +368,32 @@ impl AuthService {
     /// JWT秘密鍵の参照を取得
     pub fn get_secret(&self) -> &str {
         &self.jwt_secret
+    }
+
+    /// ユーザー作成時にデフォルトタグを作成
+    async fn create_default_tags(&self, user_id: &str) -> Result<()> {
+        // デフォルトで作成するタグのリスト
+        let default_tags = vec![
+            ("仕事", "#3B82F6"),      // 青
+            ("生活", "#10B981"), // 緑
+            ("予定", "#EF4444"),      // 赤
+            ("アイデア", "#F59E0B"),   // オレンジ
+            ("趣味", "#8B5CF6"),      // 紫
+        ];
+
+        // 各タグを作成
+        for (name, color_code) in default_tags {
+            let req = CreateTagRequest {
+                name: name.to_string(),
+                color_code: color_code.to_string(),
+            };
+            
+            // タグ作成が失敗してもユーザー登録は成功させる（ログのみ）
+            if let Err(e) = self.tag_service.create_tag(user_id, req).await {
+                eprintln!("Failed to create default tag '{}' for user {}: {}", name, user_id, e);
+            }
+        }
+
+        Ok(())
     }
 }

@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
 -- タグテーブル
 CREATE TABLE IF NOT EXISTS tags (
-    tag_id SERIAL PRIMARY KEY,
+    tag_id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) REFERENCES users(user_id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     UNIQUE(user_id, name),

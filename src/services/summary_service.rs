@@ -74,11 +74,14 @@ async fn call_gemini_api(&self, memos: &[Memo]) -> Result<String> {
         .join("\n"); // 改行で結合して一つの文字列にする
     
     // debug用出力
-    println!("AIに送るテキスト:\n{}", input_text);
+    #[cfg(debug_assertions)]
+    {
+        println!("AIに送るテキスト:\n{}", input_text);
+    }
 
     // AIに送るプロンプトを作成
     let prompt = format!(
-        "以下の箇条書きのメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。\n\n[メモ内容]\n{}",
+        "以下のメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。\n\n[メモ内容]\n{}",
         input_text
     );
 
