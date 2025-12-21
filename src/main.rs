@@ -16,7 +16,7 @@ use auth::load_or_generate_secret_key;
 use config::Config;
 use repositories::{MemoRepository, SummaryRepository, TagRepository};
 use server::AppState;
-use services::{MemoService, SummaryService, TagService};
+use services::{MemoService, SummaryService, TagService, AuthService};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -61,28 +61,48 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to MongoDB")?;
     let mongo_db = mongo_client.database(&config.database.mongodb.db_name);
 
-    // JWT秘密鍵の読み込み（環境変数、ファイル、または自動生成）
+    // JWT秘密鍵の読み込み（Configから）
     println!("Loading JWT secret key...");
-    let jwt_secret = load_or_generate_secret_key(None)?;
+    let jwt_secret = config.jwt.secret.clone();
 
     // サービスの構築
     println!("Constructing services...");
-    let memo_service = Arc::new(MemoService::new(Arc::new(MemoRepository::new(
-        mongo_db.clone(),
-    ))));
-    let tag_service = Arc::new(TagService::new(Arc::new(TagRepository::new(
-        pg_pool.clone(),
-    ))));
+    let tag_service = Arc::new(TagService::new(
+        Arc::new(TagRepository::new(pg_pool.clone())),
+        config.gemini.api_key.clone(),
+    ));
+    let memo_service = Arc::new(MemoService::new(
+        Arc::new(MemoRepository::new(mongo_db.clone())),
+        tag_service.clone(),
+    ));
     let summary_service = Arc::new(SummaryService::new(
         Arc::new(SummaryRepository::new(mongo_db.clone())),
         Arc::new(MemoRepository::new(mongo_db.clone())),
     ));
+    let email_service = Arc::new(services::email_service::EmailService::from_config(
+        &config.email.smtp_host,
+        config.email.smtp_port,
+        &config.email.smtp_username,
+        &config.email.smtp_password,
+        &config.email.from_email,
+        &config.email.from_name,
+    )?);
+    let verification_store = Arc::new(services::verification_store::VerificationStore::new());
+    let rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new());
+    let auth_service = Arc::new(AuthService::new(Arc::new(
+        repositories::AuthRepository::new(pg_pool.clone())),
+        jwt_secret.clone(),
+        email_service,
+        verification_store,
+        rate_limiter,
+    ));
+
 
     // AppState の構築
     let state = AppState {
-        pg_pool,
-        mongo_db,
+        jwt_decoding_key: auth::create_decoding_key(&jwt_secret),
         jwt_secret,
+        auth_service,
         memo_service,
         summary_service,
         tag_service,

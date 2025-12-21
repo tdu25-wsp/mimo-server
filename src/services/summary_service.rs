@@ -1,8 +1,11 @@
 use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
+use reqwest::Client; // HTTPクライアント用
+use std::env; // 環境変数取得用
+use serde_json::json; // JSON構築用
 use crate::{
-    error::Result,
+    error::{Result, AppError}, // エラーハンドリング用
     repositories::{AISummary, SummaryRepository, summary::SummaryHandler, MemoRepository, MemoHandler, Memo},
 };
 
@@ -37,8 +40,14 @@ impl SummaryService {
                 }
             }
         }
+
+    // メモが空ならAPIを呼ばずにエラーを返す
+    if memos.is_empty() {
+        return Err(AppError::ValidationError("No memos to summarize".to_string()));
+    }
+
         // 1. 要約ロジックの実行
-        let summary_content = self.generate_summary_content(&memos);
+        let summary_content = self.call_gemini_api(&memos).await?; // 外部API呼び出し部分
 
         // 2. DBへの保存データの構築
         let now = Utc::now();
@@ -56,18 +65,69 @@ impl SummaryService {
         self.summary_repo.create(summary).await
     }
 
-    // 要約ロジック（実際にはOpenAI APIなどを呼ぶ箇所）
-    fn generate_summary_content(&self, memos: &[Memo]) -> String {
-        // Mock Implementation
-        // 外部APIを叩けないため、ここでは単純な結合
-        let combined_content: Vec<String> = memos.iter()
-            .map(|m| format!("- {}", m.content))
-            .collect();
-        
-        format!(
-            "【AI Summary Mock】\nTotal {} memos summarized.\n\nKey Points:\n{}",
-            memos.len(),
-            combined_content.join("\n")
-        )
+    // Gemini APIを呼び出す関数
+async fn call_gemini_api(&self, memos: &[Memo]) -> Result<String> {
+     // AIに読ませるために、複数のメモを一つのテキストに整形する
+    let input_text = memos.iter() 
+        .map(|memo| format!("- {}", memo.content)) // 各メモをハイフン付きの箇条書き形式に変換
+        .collect::<Vec<String>>() // ベクタに収集
+        .join("\n"); // 改行で結合して一つの文字列にする
+    
+    // debug用出力
+    println!("AIに送るテキスト:\n{}", input_text);
+
+    // AIに送るプロンプトを作成
+    let prompt = format!(
+        "以下の箇条書きのメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。\n\n[メモ内容]\n{}",
+        input_text
+    );
+
+    // APIキーの取得
+    let api_key = env::var("GEMINI_API_KEY")
+            .map_err(|_| AppError::ConfigError("GEMINI_API_KEY is not set".to_string()))?;
+
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
+            api_key
+        );
+
+    let client = Client::new(); // reqwestのHTTPクライアントを作成
+    let response = client
+        .post(&url)
+            .json(&json!({
+                "contents": [{
+                    "parts": [{
+                        "text": prompt
+                    }]
+                }]
+            }))
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to send request: {}", e)))?;
+
+    // ステータスコード確認
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(AppError::ExternalServiceError(
+            format!("Gemini API error: status={}, body={}", status, error_text)
+        ));
+    }
+
+    // レスポンスのパース
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse response: {}", e)))?;
+
+    // 要約テキストの抽出
+    let content = response_json["candidates"]
+            .get(0) 
+            .and_then(|c| c["content"]["parts"].get(0)) // 最初の候補の content の parts 配列の最初の要素を取得
+            .and_then(|p| p["text"].as_str())           // テキスト部分を文字列として取得
+            .ok_or_else(|| AppError::ExternalServiceError("Invalid response format from Gemini".to_string()))?
+            .to_string();
+    Ok(content)
     }
 }

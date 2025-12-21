@@ -125,18 +125,13 @@ pub fn create_decoding_key(secret: &str) -> DecodingKey {
 //////
 //JWTの実装
 
-// ログインリクエスト構造体
-#[derive(Debug, Deserialize)]
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-}
-
 // トークン種別
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 enum TokenType {
     Refresh,
     Access,
+    Registration,  // ユーザー登録用の一時トークン
+    PasswordReset, // パスワードリセット用の一時トークン
 }
 
 // アクセストークンで認可する操作
@@ -166,7 +161,7 @@ pub struct JwtClaim {
     exp: usize,  // 有効期限
 
     typ: TokenType,     // トークンの種別
-    role: Option<Role>, // アクセストークンで認可する操作 (Optional -> Optionに修正)
+    role: Option<Vec<Role>>, // アクセストークンで認可する操作 (Optional -> Optionに修正)
 }
 
 // ------------------------------------------------------------------
@@ -176,7 +171,7 @@ pub struct JwtClaim {
 /// リフレッシュトークンの発行
 /// 引数: &LoginRequest
 /// 戻り値: Result<JWT, 任意のError>
-pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<String> {
+pub fn issue_refresh_token(user_id: &str, secret: &str) -> Result<String> {
     let now = Utc::now();
     let expiration = now + Duration::days(7); // 例: 7日間有効
 
@@ -184,7 +179,7 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
         jti: Uuid::new_v4().to_string(),
         iss: "mimo-server".to_string(),
         aud: "mimo-client".to_string(),
-        sub: req.username.clone(),
+        sub: user_id.to_string(),
         iat: now.timestamp() as usize,
         nbf: now.timestamp() as usize,
         exp: expiration.timestamp() as usize,
@@ -193,8 +188,9 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
     };
 
     let header = Header::new(JWT_ALGORITHM);
+    let key = create_encoding_key(secret);
     let token =
-        encode(&header, &claims, key).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
+        encode(&header, &claims, &key).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
     Ok(token)
 }
 
@@ -203,14 +199,9 @@ pub fn issue_refresh_token(req: &LoginRequest, key: &EncodingKey) -> Result<Stri
 /// 戻り値: Result<JWT, 任意のError>
 pub fn issue_access_token(
     user_id: &str,
-    role: Role,
-    refresh_token: &str,
+    roles: Vec<Role>,
     secret: &str,
 ) -> Result<String> {
-    // リフレッシュトークンが有効か確認
-    let dec_key = create_decoding_key(secret);
-    validate_refresh_token(user_id, refresh_token, &dec_key)?;
-
     let now = Utc::now();
     let expiration = now + Duration::hours(1); // 例: 1時間有効
 
@@ -223,7 +214,7 @@ pub fn issue_access_token(
         exp: expiration.timestamp() as usize,
         nbf: now.timestamp() as usize,
         typ: TokenType::Access,
-        role: Some(role),
+        role: Some(roles), // 要求された権限をセット
     };
 
     let header = Header::new(JWT_ALGORITHM);
@@ -237,23 +228,42 @@ pub fn issue_access_token(
 // JWTの検証関数群
 // ------------------------------------------------------------------
 
+/// トークンからユーザーIDを抽出（型チェックなし）
+pub fn extract_user_id_from_token(token: &str, key: &DecodingKey) -> Result<String> {
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
+    Ok(token_data.claims.sub)
+}
+
+/// トークンからJTIを抽出
+pub fn extract_jti_from_token(token: &str, key: &DecodingKey) -> Result<String> {
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
+    Ok(token_data.claims.jti)
+}
+
 /// リフレッシュトークンの検証
 /// 引数: &UserID, &JWT
 /// 戻り値: Result<(), 任意のError>
 pub fn validate_refresh_token(user_id: &str, token: &str, key: &DecodingKey) -> Result<()> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
 
     if claims.typ != TokenType::Refresh {
         return Err(AppError::ValidationError(
-            "トークン種別がRefreshではありません".to_string(),
+            "Token type is not Refresh".to_string(),
         ));
     }
     if claims.sub != user_id {
         return Err(AppError::ValidationError(
-            "ユーザーIDが一致しません".to_string(),
+            "User ID does not match".to_string(),
         ));
     }
 
@@ -269,27 +279,128 @@ pub fn validate_access_token(
     token: &str,
     key: &DecodingKey,
 ) -> Result<()> {
-    let validation = Validation::new(JWT_ALGORITHM);
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
     let token_data = decode::<JwtClaim>(token, key, &validation)
         .map_err(|e| AppError::ValidationError(e.to_string()))?;
     let claims = token_data.claims;
 
     if claims.typ != TokenType::Access {
         return Err(AppError::ValidationError(
-            "トークン種別がAccessではありません".to_string(),
+            "Token type is not Access".to_string(),
         ));
     }
     if claims.sub != user_id {
         return Err(AppError::ValidationError(
-            "ユーザーIDが一致しません".to_string(),
+            "User ID does not match".to_string(),
         ));
     }
 
     // 権限のチェック
     match claims.role {
-        Some(r) if r == required_role => Ok(()),
+        Some(r) if r.contains(&required_role) => Ok(()),
         _ => Err(AppError::ValidationError(
-            "必要な権限を持っていません".to_string(),
+            "Insufficient permissions".to_string(),
         )),
     }
+}
+
+/// 登録用トークンの発行
+/// 引数: メールアドレス, 秘密鍵
+/// 戻り値: Result<JWT, AppError>
+pub fn issue_registration_token(email: &str, secret: &str) -> Result<String> {
+    let now = Utc::now();
+    let expiration = now + Duration::minutes(15); // 15分間有効
+
+    let claims = JwtClaim {
+        jti: Uuid::new_v4().to_string(),
+        iss: "mimo-server".to_string(),
+        aud: "mimo-client".to_string(),
+        sub: email.to_string(), // subにメールアドレスを格納
+        iat: now.timestamp() as usize,
+        nbf: now.timestamp() as usize,
+        exp: expiration.timestamp() as usize,
+        typ: TokenType::Registration,
+        role: None,
+    };
+
+    let header = Header::new(JWT_ALGORITHM);
+    let key = create_encoding_key(secret);
+    let token =
+        encode(&header, &claims, &key).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
+    Ok(token)
+}
+
+/// 登録用トークンの検証
+/// 引数: トークン, 期待されるメールアドレス, 秘密鍵
+/// 戻り値: Result<String, AppError> (成功時はJTI)
+pub fn validate_registration_token(token: &str, email: &str, key: &DecodingKey) -> Result<String> {
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
+    let claims = token_data.claims;
+
+    if claims.typ != TokenType::Registration {
+        return Err(AppError::ValidationError(
+            "Token type is not Registration".to_string(),
+        ));
+    }
+    if claims.sub != email {
+        return Err(AppError::ValidationError(
+            "Email address does not match".to_string(),
+        ));
+    }
+
+    Ok(claims.jti)
+}
+
+/// パスワードリセット用トークンの発行
+/// 引数: メールアドレス, 秘密鍵
+/// 戻り値: Result<JWT, AppError>
+pub fn issue_password_reset_token(email: &str, secret: &str) -> Result<String> {
+    let now = Utc::now();
+    let expiration = now + Duration::minutes(30); // 30分間有効
+
+    let claims = JwtClaim {
+        jti: Uuid::new_v4().to_string(),
+        iss: "mimo-server".to_string(),
+        aud: "mimo-client".to_string(),
+        sub: email.to_string(),
+        iat: now.timestamp() as usize,
+        nbf: now.timestamp() as usize,
+        exp: expiration.timestamp() as usize,
+        typ: TokenType::PasswordReset,
+        role: None,
+    };
+
+    let header = Header::new(JWT_ALGORITHM);
+    let key = create_encoding_key(secret);
+    let token =
+        encode(&header, &claims, &key).map_err(|e| AppError::EnvironmentError(e.to_string()))?;
+    Ok(token)
+}
+
+/// パスワードリセット用トークンの検証
+/// 引数: トークン, 期待されるメールアドレス, 秘密鍵
+/// 戻り値: Result<String, AppError> (成功時はJTI)
+pub fn validate_password_reset_token(token: &str, email: &str, key: &DecodingKey) -> Result<String> {
+    let mut validation = Validation::new(JWT_ALGORITHM);
+    validation.set_audience(&["mimo-client"]);
+    let token_data = decode::<JwtClaim>(token, key, &validation)
+        .map_err(|e| AppError::ValidationError(e.to_string()))?;
+    let claims = token_data.claims;
+
+    if claims.typ != TokenType::PasswordReset {
+        return Err(AppError::ValidationError(
+            "Token type is not PasswordReset".to_string(),
+        ));
+    }
+    if claims.sub != email {
+        return Err(AppError::ValidationError(
+            "Email address does not match".to_string(),
+        ));
+    }
+
+    Ok(claims.jti)
 }
