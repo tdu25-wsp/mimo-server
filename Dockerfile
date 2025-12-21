@@ -1,6 +1,6 @@
 # ビルドステージ
 FROM rust:alpine AS builder
-RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
 WORKDIR /usr/src/mimo-server
 COPY Cargo.toml ./
 # 依存関係をキャッシュするために仮ビルドを実施
