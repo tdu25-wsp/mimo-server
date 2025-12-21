@@ -7,19 +7,22 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
+use crate::auth::create_decoding_key;
 use crate::config::Config;
 use crate::routes::{create_api_routes, create_share_routes};
 use crate::services::{AuthService, MemoService, SummaryService, TagService};
+use jsonwebtoken::DecodingKey;
 
 /// アプリケーション全体で共有される状態
 #[derive(Clone)]
 pub struct AppState {
     pub jwt_secret: String,
+    /// JWT検証用のデコード鍵（一度だけ生成して再利用）
+    pub jwt_decoding_key: DecodingKey,
     /// サービス層
     pub auth_service: Arc<AuthService>,
     pub memo_service: Arc<MemoService>,
     pub summary_service: Arc<SummaryService>,
-    pub tag_service: Arc<TagService>,
     pub tag_service: Arc<TagService>,
     /// アプリケーション設定
     pub config: Arc<Config>,

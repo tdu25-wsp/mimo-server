@@ -8,7 +8,8 @@ use axum_extra::extract::cookie::CookieJar;
 use serde_json::json;
 
 use crate::{
-    error::Result,
+    auth::extract_user_id_from_token,
+    error::{AppError, Result},
     repositories::{Memo, MemoCreateRequest, MemoList, MemoUpdateRequest},
     server::AppState,
 };
@@ -27,8 +28,16 @@ async fn list_memos(
     jar: CookieJar,
     Path(user_id): Path<String>,
 ) -> Result<Json<MemoList>> {
-    // TODO: Validate access token
-    let _access_token = jar.get("access_token");
+    let access_token = jar
+        .get("access_token")
+        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+
+    // パスからのuser_idと認証されたユーザーIDが一致するか確認
+    if authenticated_user_id != user_id {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
 
     let memos = state.memo_service.find_by_user(&user_id).await?;
     Ok(Json(MemoList { memos }))
@@ -39,8 +48,16 @@ async fn create_memo(
     jar: CookieJar,
     Json(req): Json<MemoCreateRequest>,
 ) -> Result<Json<Memo>> {
-    // TODO: Validate access token
-    let _access_token = jar.get("access_token");
+    let access_token = jar
+        .get("access_token")
+        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+
+    // リクエストのuser_idと認証されたユーザーIDが一致するか確認
+    if authenticated_user_id != req.user_id {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
 
     let memo = state.memo_service.create(req).await?;
     Ok(Json(memo))
@@ -51,21 +68,40 @@ async fn get_memo(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Json<Memo>> {
-    // TODO: Validate access token
-    let _access_token = jar.get("access_token");
+    let access_token = jar
+        .get("access_token")
+        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
 
     let memo = state.memo_service.find_by_id(&id).await?;
+    
+    // メモの所有者と認証されたユーザーIDが一致するか確認
+    if memo.user_id != authenticated_user_id {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
     Ok(Json(memo))
 }
 
-// 追加: メモ更新ハンドラー
 async fn update_memo(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
     Json(req): Json<MemoUpdateRequest>,
 ) -> Result<Json<Memo>> {
-    let _access_token = jar.get("access_token");
+    let access_token = jar
+        .get("access_token")
+        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+
+    // 更新前にメモの所有者を確認
+    let existing_memo = state.memo_service.find_by_id(&id).await?;
+    if existing_memo.user_id != authenticated_user_id {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
     let memo = state.memo_service.update_content(&id, req.content).await?;
     Ok(Json(memo))
 }
@@ -75,8 +111,17 @@ async fn delete_memo(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
-    // TODO: Validate access token
-    let _access_token = jar.get("access_token");
+    let access_token = jar
+        .get("access_token")
+        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+
+    // 削除前にメモの所有者を確認
+    let existing_memo = state.memo_service.find_by_id(&id).await?;
+    if existing_memo.user_id != authenticated_user_id {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
 
     state.memo_service.delete(&id).await?;
     Ok(Json(json!({

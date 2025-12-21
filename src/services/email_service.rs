@@ -33,7 +33,7 @@ impl EmailService {
             .unwrap_or_else(|_| smtp_username.clone());
         
         let from_name = env::var("SMTP_FROM_NAME")
-            .unwrap_or_else(|_| "Mimo Server".to_string());
+            .unwrap_or_else(|_| "Mimo".to_string());
         
         let credentials = Credentials::new(smtp_username, smtp_password);
         
