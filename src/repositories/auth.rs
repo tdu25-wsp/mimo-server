@@ -1,7 +1,6 @@
 use crate::error::{AppError, Result};
 use argon2::{
-    Argon2,
-    password_hash::{PasswordHasher, SaltString, rand_core},
+    Argon2, PasswordHash, password_hash::{PasswordHasher, PasswordVerifier, SaltString, rand_core}
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -9,27 +8,103 @@ use sqlx::Row;
 pub struct AuthRepository {
     pub pool: sqlx::PgPool,
 }
+
 impl AuthRepository {
     pub fn new(pool: sqlx::PgPool) -> Self {
         Self { pool }
     }
+
+    // ヘルパーメソッド: パスワードをハッシュ化
+    fn hash_password(password: &str) -> Result<String> {
+        let argon2 = Argon2::default();
+        let salt = SaltString::generate(&mut rand_core::OsRng);
+        let hash = PasswordHasher::hash_password(&argon2, password.as_bytes(), &salt)
+            .map_err(|e| AppError::HashingError(e.to_string()))?;
+        Ok(hash.to_string())
+    }
+
+    // ヘルパーメソッド: パスワードを検証
+    fn verify_password(password: &str, hash: &str) -> Result<()> {
+        let argon2 = Argon2::default();
+        let parsed_hash = PasswordHash::new(hash)
+            .map_err(|e| AppError::HashingError(e.to_string()))?;
+        argon2.verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|e| AppError::AuthenticationError(e.to_string()))
+    }
 }
 
-/////////
-/// User
-/////////
-#[derive(Debug, Clone)]
-pub struct User {
-    pub user_id: String,
+////////
+/// 認証関連の構造体
+////////
+#[derive(Deserialize, Debug)]
+pub struct UserLoginRequest {
     pub email: String,
-    pub display_name: String,
-    pub password_hash: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-
-    pub is_deleted: bool,
+    pub password: String,
 }
 
+// 認証メソッド
+impl AuthRepository {
+    /// パスワードを検証
+    pub async fn validate_password(&self, req: UserLoginRequest) -> Result<()> {
+        let row = sqlx::query("SELECT password_hash FROM users WHERE email = $1")
+            .bind(&req.email)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        
+        let password_hash = row.get::<String, _>("password_hash");
+        Self::verify_password(&req.password, &password_hash)
+    }
+    
+    /// ログアウト処理（JWTを無効化）
+    pub async fn logout(&self, jtis: Vec<String>) -> Result<()> {
+        for jti in jtis {
+            self.revoke_jwt(&jti, &chrono::Utc::now().to_string()).await?;
+        }
+        Ok(())
+    }
+
+    /// ユーザー登録
+    pub async fn register(&self, user: UserCreateRequest) -> Result<UserResponse> {
+        self.create_user(user).await
+    }
+    
+    /// パスワードリセット
+    pub async fn reset_password(&self, user_id: &str, new_password: &str) -> Result<()> {
+        let password_hash = Self::hash_password(new_password)?;
+
+        sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE user_id = $3")
+            .bind(&password_hash)
+            .bind(chrono::Utc::now())
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    /// パスワード忘れ（実装予定）
+    pub async fn forgot_password(&self, _user_id: &str) -> Result<()> {
+        // TODO: メール送信などの実装
+        Ok(())
+    }
+
+    /// 検証コード確認（実装予定）
+    pub async fn verify_code(&self, _user_id: &str, _code: &str) -> Result<bool> {
+        // TODO: 検証コードの実装
+        Ok(true)
+    }
+
+    /// メールアドレス検証（実装予定）
+    pub async fn verify_email(&self, _user_id: &str, _email: &str) -> Result<bool> {
+        // TODO: メール検証の実装
+        Ok(true)
+    }
+}
+
+////////
+/// ユーザー関連の構造体
+////////
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserResponse {
     pub user_id: String,
@@ -37,40 +112,30 @@ pub struct UserResponse {
     pub display_name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
-
-    pub is_deleted: bool,
+    pub is_active: bool,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct UserCreateRequest {
     pub user_id: String,
     pub email: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub password: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct UserUpdateRequest {
-    pub user_id: String,
     pub email: Option<String>,
     pub display_name: Option<String>,
     pub password: Option<String>,
 }
 
-#[async_trait::async_trait]
-pub trait UserHandler: Send + Sync {
-    async fn find_by_id(&self, user_id: &str) -> Result<Option<UserResponse>>;
-    async fn find_by_email(&self, email: &str) -> Result<Option<UserResponse>>;
-    async fn create(&self, user: UserCreateRequest) -> Result<UserResponse>;
-    async fn update(&self, user: UserUpdateRequest) -> Result<UserResponse>;
-    async fn delete(&self, user_id: &str) -> Result<()>;
-}
-
-#[async_trait::async_trait]
-impl UserHandler for AuthRepository {
-    async fn find_by_id(&self, user_id: &str) -> Result<Option<UserResponse>> {
+// ユーザー管理メソッド
+impl AuthRepository {
+    /// IDでユーザーを検索
+    pub async fn find_user_by_id(&self, user_id: &str) -> Result<Option<UserResponse>> {
         let user = sqlx::query_as::<_, UserResponse>(
-            "SELECT user_id, email, display_name, created_at, updated_at, is_deleted FROM users WHERE user_id = $1"
+            "SELECT user_id, email, display_name, created_at, updated_at, is_active FROM users WHERE user_id = $1"
         )
         .bind(user_id)
         .fetch_optional(&self.pool)
@@ -79,9 +144,10 @@ impl UserHandler for AuthRepository {
         Ok(user)
     }
 
-    async fn find_by_email(&self, email: &str) -> Result<Option<UserResponse>> {
+    /// メールアドレスでユーザーを検索
+    pub async fn find_user_by_email(&self, email: &str) -> Result<Option<UserResponse>> {
         let user = sqlx::query_as::<_, UserResponse>(
-            "SELECT user_id, email, display_name, created_at, updated_at, is_deleted FROM users WHERE email = $1"
+            "SELECT user_id, email, display_name, created_at, updated_at, is_active FROM users WHERE email = $1"
         )
         .bind(email)
         .fetch_optional(&self.pool)
@@ -91,27 +157,22 @@ impl UserHandler for AuthRepository {
         Ok(user)
     }
 
-    async fn create(&self, user: UserCreateRequest) -> Result<UserResponse> {
-        let argon2 = Argon2::default();
-
+    /// ユーザーを作成
+    pub async fn create_user(&self, user: UserCreateRequest) -> Result<UserResponse> {
         let user_id = uuid::Uuid::new_v4().to_string();
-        let salt = SaltString::generate(&mut rand_core::OsRng);
-        let password_hash = PasswordHasher::hash_password(&argon2, user.password.as_bytes(), &salt)
-            .map_err(|e| AppError::HashingError(e.to_string()))?
-            .to_string();
-        let created_at = chrono::Utc::now();
-        let updated_at = created_at;
-        let is_deleted = false;
+        let password_hash = Self::hash_password(&user.password)?;
+        let now = chrono::Utc::now();
+        
         let row = sqlx::query(
-            "INSERT INTO users (user_id, email, display_name, password_hash, created_at, updated_at, is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id, email, display_name, password_hash, created_at, updated_at, is_deleted"
+            "INSERT INTO users (user_id, email, display_name, password_hash, created_at, updated_at, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id, email, display_name, created_at, updated_at, is_active"
         )
         .bind(&user_id)
         .bind(&user.email)
         .bind(&user.display_name)
         .bind(&password_hash)
-        .bind(&created_at)
-        .bind(&updated_at)
-        .bind(&is_deleted)
+        .bind(&now)
+        .bind(&now)
+        .bind(true)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
@@ -122,40 +183,37 @@ impl UserHandler for AuthRepository {
             display_name: row.get("display_name"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
-            is_deleted: row.get("is_deleted"),
+            is_active: row.get("is_active"),
         })
     }
 
-    async fn update(&self, user: UserUpdateRequest) -> Result<UserResponse> {
-        let row = if Some(&user.password).is_some() {
-            // パスワード変更が必要な場合
-            let argon2 = Argon2::default();
-            let salt = SaltString::generate(&mut rand_core::OsRng);
-            let password_hash =
-                PasswordHasher::hash_password(&argon2, user.password.unwrap().as_bytes(), &salt)
-                    .map_err(|e| AppError::HashingError(e.to_string()))?
-                    .to_string();
-
+    /// ユーザー情報を更新
+    pub async fn update_user(&self, user_id: &str, req: UserUpdateRequest) -> Result<UserResponse> {
+        let now = chrono::Utc::now();
+        
+        let row = if let Some(password) = req.password {
+            // パスワード変更あり
+            let password_hash = Self::hash_password(&password)?;
             sqlx::query(
-                "UPDATE users SET email = $1, display_name = $2, password_hash = $3, updated_at = $4 WHERE user_id = $5 RETURNING user_id, email, display_name, password_hash, created_at, updated_at, is_deleted"
+                "UPDATE users SET email = $1, display_name = $2, password_hash = $3, updated_at = $4 WHERE user_id = $5 RETURNING user_id, email, display_name, created_at, updated_at, is_active"
             )
-            .bind(&user.email)
-            .bind(&user.display_name)
+            .bind(&req.email)
+            .bind(&req.display_name)
             .bind(&password_hash)
-            .bind(&chrono::Utc::now())
-            .bind(&user.user_id)
+            .bind(&now)
+            .bind(user_id)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?
         } else {
-            // パスワード変更が不要な場合
+            // パスワード変更なし
             sqlx::query(
-                "UPDATE users SET email = $1, display_name = $2, updated_at = $3 WHERE user_id = $4 RETURNING user_id, email, display_name, password_hash, created_at, updated_at, is_deleted"
+                "UPDATE users SET email = $1, display_name = $2, updated_at = $3 WHERE user_id = $4 RETURNING user_id, email, display_name, created_at, updated_at, is_active"
             )
-            .bind(&user.email)
-            .bind(&user.display_name)
-            .bind(&chrono::Utc::now())
-            .bind(&user.user_id)
+            .bind(&req.email)
+            .bind(&req.display_name)
+            .bind(&now)
+            .bind(user_id)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?
@@ -167,12 +225,13 @@ impl UserHandler for AuthRepository {
             display_name: row.get("display_name"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
-            is_deleted: row.get("is_deleted"),
+            is_active: row.get("is_active"),
         })
     }
 
-    async fn delete(&self, user_id: &str) -> Result<()> {
-        sqlx::query("UPDATE users SET is_deleted = TRUE WHERE user_id = $1")
+    /// ユーザーを削除（論理削除）
+    pub async fn delete_user(&self, user_id: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET is_active = FALSE WHERE user_id = $1")
             .bind(user_id)
             .execute(&self.pool)
             .await
@@ -181,19 +240,12 @@ impl UserHandler for AuthRepository {
     }
 }
 
-/////////
-/// JWT Revocation
-/// /////
-#[async_trait::async_trait]
-pub trait JWTHandler: Send + Sync {
-    async fn revoke(&self, jti: &str, exp: &str) -> Result<()>;
-    async fn is_revoked(&self, jti: &str) -> Result<bool>;
-    async fn cleanup(&self) -> Result<()>;
-}
-
-#[async_trait::async_trait]
-impl JWTHandler for AuthRepository {
-    async fn revoke(&self, jti: &str, exp: &str) -> Result<()> {
+////////
+/// JWT管理メソッド
+////////
+impl AuthRepository {
+    /// JWTを無効化
+    pub async fn revoke_jwt(&self, jti: &str, exp: &str) -> Result<()> {
         sqlx::query(
             "INSERT INTO jwt_revocations (jti, expires_at, revoked_at) VALUES ($1, $2, now())",
         )
@@ -205,7 +257,8 @@ impl JWTHandler for AuthRepository {
         Ok(())
     }
 
-    async fn is_revoked(&self, jti: &str) -> Result<bool> {
+    /// JWTが無効化されているか確認
+    pub async fn is_jwt_revoked(&self, jti: &str) -> Result<bool> {
         let row =
             sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM jwt_revocations WHERE jti = $1")
                 .bind(jti)
@@ -216,7 +269,8 @@ impl JWTHandler for AuthRepository {
         Ok(row.0 > 0)
     }
 
-    async fn cleanup(&self) -> Result<()> {
+    /// 期限切れトークンをクリーンアップ
+    pub async fn cleanup_expired_tokens(&self) -> Result<()> {
         sqlx::query("DELETE FROM jwt_revocations WHERE expires_at < now()")
             .execute(&self.pool)
             .await

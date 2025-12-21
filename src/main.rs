@@ -16,7 +16,7 @@ use auth::load_or_generate_secret_key;
 use config::Config;
 use repositories::{MemoRepository, SummaryRepository, TagRepository};
 use server::AppState;
-use services::{MemoService, SummaryService, TagService};
+use services::{MemoService, SummaryService, TagService, AuthService};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -77,12 +77,29 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(SummaryRepository::new(mongo_db.clone())),
         Arc::new(MemoRepository::new(mongo_db.clone())),
     ));
+    let email_service = Arc::new(services::email_service::EmailService::new(
+        &config.email.smtp_host,
+        config.email.smtp_port,
+        &config.email.from_name,
+        &config.email.from_email,
+        &config.email.smtp_username,
+        &config.email.smtp_password,
+    )?);
+    let verification_store = Arc::new(services::verification_store::VerificationStore::new());
+    let rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new(5, 60)); // 5回/60秒
+    let auth_service = Arc::new(AuthService::new(Arc::new(
+        repositories::AuthRepository::new(pg_pool.clone())),
+        jwt_secret.clone(),
+        email_service,
+        verification_store,
+        rate_limiter,
+    ));
+
 
     // AppState の構築
     let state = AppState {
-        pg_pool,
-        mongo_db,
         jwt_secret,
+        auth_service,
         memo_service,
         summary_service,
         tag_service,

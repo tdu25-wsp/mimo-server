@@ -12,6 +12,7 @@ pub enum AppError {
     ValidationError(String),
     HashingError(String),
     EnvironmentError(String),
+    AuthenticationError(String)
 }
 
 impl std::fmt::Display for AppError {
@@ -22,6 +23,7 @@ impl std::fmt::Display for AppError {
             AppError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             AppError::HashingError(msg) => write!(f, "Hashing error: {}", msg),
             AppError::EnvironmentError(msg) => write!(f, "Environment error: {}", msg),
+            AppError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
         }
     }
 }
@@ -41,6 +43,7 @@ impl IntoResponse for AppError {
             AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::HashingError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::EnvironmentError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::AuthenticationError(msg) => (StatusCode::UNAUTHORIZED, msg),
         };
 
         (status, Json(ErrorResponse { error: message })).into_response()
