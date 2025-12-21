@@ -1,7 +1,7 @@
 use axum::{
     Router,
     extract::State,
-    http::StatusCode,
+    http::{StatusCode, header},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
@@ -14,6 +14,11 @@ use crate::server::AppState;
 use crate::repositories::auth::UserCreateRequest;
 use crate::error::AppError;
 use crate::auth::{extract_user_id_from_token, extract_jti_from_token, create_decoding_key};
+
+// Cookie設定用定数
+static SAME_SITE: SameSite = SameSite::None;
+static COOKIE_SECURE: bool = false; // 開発中なのでhttpを許可
+static COOKIE_HTTP_ONLY: bool = true;
 
 pub fn create_auth_routes() -> Router<AppState> {
     Router::new()
@@ -113,16 +118,16 @@ async fn handle_login(
     // Cookieを設定
     let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
         .path("/api/auth")
-        .http_only(true)
-        .secure(false) // 開発中なのでhttpを許可
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
         .path("/api")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .build();
 
     let jar = jar.add(refresh_cookie).add(access_cookie);
@@ -231,9 +236,9 @@ async fn handle_verify_email(
     // 登録トークンをCookieに設定（15分間有効）
     let registration_cookie = Cookie::build(("registration_token", registration_token))
         .path("/api/auth/register")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .max_age(time::Duration::minutes(15))
         .build();
 
@@ -271,16 +276,16 @@ async fn handle_complete_registration(
     // Cookieを設定
     let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
         .path("/api/auth")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
         .path("/api")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .build();
 
     // 登録トークンCookieを削除
@@ -325,9 +330,9 @@ async fn handle_refresh(
     // 新しいアクセストークンをCookieに設定
     let access_cookie = Cookie::build(("access_token", access_token))
         .path("/api")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .build();
 
     Ok((
@@ -375,6 +380,7 @@ async fn handle_forgot_password(
 /// ステップ2: リセットコード検証とトークン発行
 async fn handle_verify_reset_code(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: CookieJar,
     Json(req): Json<VerifyResetCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
@@ -386,9 +392,9 @@ async fn handle_verify_reset_code(
     // リセットトークンをCookieに設定（30分間有効）
     let reset_cookie = Cookie::build(("reset_token", reset_token))
         .path("/api/auth/password")
-        .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
         .max_age(time::Duration::minutes(30))
         .build();
 
