@@ -235,14 +235,54 @@ async fn handle_verify_email(
 
     // 登録トークンをCookieに設定（15分間有効）
     let registration_cookie = Cookie::build(("registration_token", registration_token))
-        .path("/")
+        .path("/api/auth/register")
+        .http_only(COOKIE_HTTP_ONLY)
+        .secure(COOKIE_SECURE)
+        .same_site(SAME_SITE)
+        .max_age(time::Duration::minutes(15))
+        .build();
+
+    Ok((
+        jar.add(registration_cookie),
+        Json(json!({"message": "Email verified successfully"})),
+    ))
+}
+
+/// ステップ3: 登録完了
+async fn handle_complete_registration(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<CompleteRegistrationRequest>,
+) -> Result<impl IntoResponse, Response> {
+    // Cookieから登録トークンを取得
+    let registration_token = jar.get("registration_token")
+        .ok_or_else(|| map_error(AppError::ValidationError("Registration token not found".to_string())))?
+        .value()
+        .to_string();
+
+    let user_req = UserCreateRequest {
+        user_id: req.user_id,
+        email: req.email,
+        display_name: req.display_name,
+        password: req.password,
+    };
+
+    // ユーザー登録
+    let (access_token, refresh_token, user) = state.auth_service
+        .complete_registration(registration_token, user_req)
+        .await
+        .map_err(map_error)?;
+
+    // Cookieを設定
+    let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
+        .path("/api/auth")
         .http_only(COOKIE_HTTP_ONLY)
         .secure(COOKIE_SECURE)
         .same_site(SAME_SITE)
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
-        .path("/")
+        .path("/api")
         .http_only(COOKIE_HTTP_ONLY)
         .secure(COOKIE_SECURE)
         .same_site(SAME_SITE)
