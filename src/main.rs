@@ -12,11 +12,10 @@ mod routes;
 mod server;
 mod services;
 
-use auth::load_or_generate_secret_key;
 use config::Config;
 use repositories::{MemoRepository, SummaryRepository, TagRepository};
 use server::AppState;
-use services::{MemoService, SummaryService, TagService, AuthService};
+use services::{AuthService, MemoService, SummaryService, TagService};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
             "Created PostgreSQL database: {}",
             config.database.postgres.db_name
         );
-    }else {
+    } else {
         println!(
             "PostgreSQL database {} already exists",
             config.database.postgres.db_name
@@ -55,7 +54,10 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to run PostgreSQL migrations")?;
 
     // MongoDB 接続（メモ用）
-    println!("Connecting to MongoDB at {}", &config.database.mongodb.connection_uri);
+    println!(
+        "Connecting to MongoDB at {}",
+        &config.database.mongodb.connection_uri
+    );
     let mongo_client = MongoClient::with_uri_str(&config.database.mongodb.connection_uri)
         .await
         .context("Failed to connect to MongoDB")?;
@@ -97,7 +99,6 @@ async fn main() -> anyhow::Result<()> {
         verification_store,
         rate_limiter,
     ));
-
 
     // AppState の構築
     let state = AppState {

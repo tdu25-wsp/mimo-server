@@ -2,8 +2,8 @@ use axum::{
     Router,
     http::{HeaderValue, Method},
 };
-use std::{net::SocketAddr, time::Duration};
 use std::sync::Arc;
+use std::{net::SocketAddr, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 

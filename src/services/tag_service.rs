@@ -1,12 +1,12 @@
 use crate::{
-    error::{Result, AppError},
-    repositories::{Tag, TagRepository, CreateTagRequest, UpdateTagRequest, tag::TagHandler}, // TagHandlerトレイトをインポート
+    error::{AppError, Result},
+    repositories::{CreateTagRequest, Tag, TagRepository, UpdateTagRequest, tag::TagHandler}, // TagHandlerトレイトをインポート
 };
 use chrono::Utc;
-use std::sync::Arc;
-use uuid::Uuid;
 use reqwest::Client; // HTTPクライアント
-use serde_json::json; // JSONマクロ
+use serde_json::json;
+use std::sync::Arc;
+use uuid::Uuid; // JSONマクロ
 
 pub struct TagService {
     tag_repo: Arc<TagRepository>, // MongoTagRepository → TagRepositoryに変更
@@ -15,22 +15,26 @@ pub struct TagService {
 
 impl TagService {
     pub fn new(tag_repo: Arc<TagRepository>, gemini_api_key: String) -> Self {
-        Self { tag_repo, gemini_api_key }
+        Self {
+            tag_repo,
+            gemini_api_key,
+        }
     }
 
     pub async fn get_tags_by_user(&self, user_id: &str) -> Result<Vec<Tag>> {
         self.tag_repo.find_by_user_id(user_id).await
     }
 
-    pub async fn create_tag(
-        &self,
-        user_id: &str,
-        req: CreateTagRequest,
-    ) -> Result<Tag> {
+    pub async fn create_tag(&self, user_id: &str, req: CreateTagRequest) -> Result<Tag> {
         self.tag_repo.create(&user_id, req).await
     }
 
-    pub async fn update_tag(&self, user_id: &str, tag_id: &str, req: UpdateTagRequest) -> Result<Tag> {
+    pub async fn update_tag(
+        &self,
+        user_id: &str,
+        tag_id: &str,
+        req: UpdateTagRequest,
+    ) -> Result<Tag> {
         self.tag_repo.update(user_id, tag_id, req).await
     }
 
@@ -58,14 +62,16 @@ impl TagService {
 
         // APIキーのチェック
         if self.gemini_api_key.is_empty() {
-            return Err(AppError::ConfigError("GEMINI_API_KEY is not configured".to_string()));
+            return Err(AppError::ConfigError(
+                "GEMINI_API_KEY is not configured".to_string(),
+            ));
         }
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
             self.gemini_api_key
         );
-        
+
         let client = Client::new();
         let response = client // reqwestのHTTPクライアントを作成
             .post(&url) // POSTリクエスト
@@ -76,22 +82,24 @@ impl TagService {
             }))
             .send()
             .await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to send request: {}", e)))?;
+            .map_err(|e| {
+                AppError::ExternalServiceError(format!("Failed to send request: {}", e))
+            })?;
 
         // ステータスコードチェック
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(
-                format!("Gemini API error in auto-tagging: status={}, body={}", status, error_text)
-            ));
+            return Err(AppError::ExternalServiceError(format!(
+                "Gemini API error in auto-tagging: status={}, body={}",
+                status, error_text
+            )));
         }
 
         // レスポンス解析
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse response: {}", e)))?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse response: {}", e))
+        })?;
 
         let suggested_name = response_json["candidates"] // AIの返答からタグ名を抽出
             .get(0)
@@ -101,7 +109,8 @@ impl TagService {
             .unwrap_or("None");
 
         // タグ名からIDに変換
-        if let Some(tag) = tags.into_iter().find(|t| t.name.trim() == suggested_name) { //DBから取得しておいた tags リストを端から順に見る
+        if let Some(tag) = tags.into_iter().find(|t| t.name.trim() == suggested_name) {
+            //DBから取得しておいた tags リストを端から順に見る
             Ok(Some(tag.tag_id))
         } else {
             Ok(None)
