@@ -298,7 +298,7 @@ async fn handle_verify_email(
     let cookie_config = state.config.server.get_cookie_config();
 
     let registration_cookie = Cookie::build(("registration_token", registration_token))
-        .path("/api/auth/register")
+        .path("/")
         .max_age(time::Duration::seconds(15 * 60))
         .same_site(cookie_config.same_site)
         .secure(cookie_config.secure)
@@ -346,7 +346,7 @@ async fn handle_complete_registration(
     let cookie_config = state.config.server.get_cookie_config();
 
     let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
-        .path("/api/auth")
+        .path("/")
         .max_age(time::Duration::seconds(7 * 24 * 60 * 60))
         .same_site(cookie_config.same_site)
         .secure(cookie_config.secure)
@@ -354,7 +354,7 @@ async fn handle_complete_registration(
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
-        .path("/api")
+        .path("/")
         .max_age(time::Duration::seconds(60 * 60))
         .same_site(cookie_config.same_site)
         .secure(cookie_config.secure)
