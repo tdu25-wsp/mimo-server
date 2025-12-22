@@ -5,8 +5,8 @@ use std::sync::Arc;
 /// 認証コードの目的
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum VerificationPurpose {
-    Registration,    // ユーザー登録
-    PasswordReset,   // パスワードリセット
+    Registration,  // ユーザー登録
+    PasswordReset, // パスワードリセット
 }
 
 /// 認証コードの情報
@@ -58,7 +58,12 @@ impl VerificationStore {
     }
 
     /// 認証コードを保存（有効期限: 15分）
-    pub fn store_verification_code(&self, email: String, code: String, purpose: VerificationPurpose) {
+    pub fn store_verification_code(
+        &self,
+        email: String,
+        code: String,
+        purpose: VerificationPurpose,
+    ) {
         let expires_at = Utc::now() + Duration::minutes(15);
         let verification = VerificationCode {
             email: email.clone(),
@@ -67,23 +72,27 @@ impl VerificationStore {
             expires_at,
             attempts: 0,
         };
-        self.verification_codes.insert((email, purpose), verification);
+        self.verification_codes
+            .insert((email, purpose), verification);
     }
 
     /// 認証コードを検証
-    pub fn verify_code(&self, email: &str, code: &str, purpose: &VerificationPurpose) -> Result<bool, String> {
+    pub fn verify_code(
+        &self,
+        email: &str,
+        code: &str,
+        purpose: &VerificationPurpose,
+    ) -> Result<bool, String> {
         // スコープを明示的に分けることで、ガードの保持期間を最小化
         let key = (email.to_string(), purpose.clone());
         let (is_expired, attempts, stored_code) = {
-            let entry = self.verification_codes.get(&key)
+            let entry = self
+                .verification_codes
+                .get(&key)
                 .ok_or_else(|| "Verification code not found".to_string())?;
-            
+
             let now = Utc::now();
-            (
-                now > entry.expires_at,
-                entry.attempts,
-                entry.code.clone(),
-            )
+            (now > entry.expires_at, entry.attempts, entry.code.clone())
         }; // ここでReadガードが解放される
 
         // 有効期限チェック
@@ -128,15 +137,13 @@ impl VerificationStore {
     pub fn verify_registration_token(&self, token: &str, email: &str) -> Result<(), String> {
         // スコープを分けて、ガードの保持期間を最小化
         let (is_expired, is_used, stored_email) = {
-            let entry = self.registration_tokens.get(token)
+            let entry = self
+                .registration_tokens
+                .get(token)
                 .ok_or_else(|| "Registration token not found".to_string())?;
-            
+
             let now = Utc::now();
-            (
-                now > entry.expires_at,
-                entry.used,
-                entry.email.clone(),
-            )
+            (now > entry.expires_at, entry.used, entry.email.clone())
         }; // ここでReadガードが解放される
 
         // 有効期限チェック

@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // AI-generated summary structure
-#[derive(Debug, Clone, Serialize, Deserialize)] //deriving necessary traits
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AISummary {
     pub summary_id: String,
     pub user_id: String,
@@ -16,8 +16,7 @@ pub struct AISummary {
 }
 
 #[derive(Deserialize)]
-pub struct SummaryCreateRequest {
-    pub user_id: String,
+pub struct SummarizeRequest {
     pub memo_ids: Vec<String>,
 }
 
@@ -31,6 +30,7 @@ pub struct SummaryList {
 // Summary repository trait
 pub trait SummaryHandler: Send + Sync {
     async fn find_by_user_id(&self, user_id: &str) -> Result<Vec<AISummary>>;
+    async fn find_by_id(&self, summary_id: &str) -> Result<Option<AISummary>>;
     async fn create(&self, summary: AISummary) -> Result<AISummary>;
     async fn delete(&self, summary_id: &str) -> Result<()>;
 }
@@ -52,10 +52,17 @@ impl SummaryHandler for SummaryRepository {
     async fn find_by_user_id(&self, user_id: &str) -> Result<Vec<AISummary>> {
         use futures::stream::TryStreamExt;
         self.collection
-            .find(mongodb::bson::doc! { "userId": user_id })
+            .find(mongodb::bson::doc! { "user_id": user_id })
             .await
             .map_err(|e| crate::error::AppError::DatabaseError(e.to_string()))?
             .try_collect()
+            .await
+            .map_err(|e| crate::error::AppError::DatabaseError(e.to_string()))
+    }
+
+    async fn find_by_id(&self, summary_id: &str) -> Result<Option<AISummary>> {
+        self.collection
+            .find_one(mongodb::bson::doc! { "summary_id": summary_id })
             .await
             .map_err(|e| crate::error::AppError::DatabaseError(e.to_string()))
     }
@@ -70,7 +77,7 @@ impl SummaryHandler for SummaryRepository {
 
     async fn delete(&self, summary_id: &str) -> Result<()> {
         self.collection
-            .delete_one(mongodb::bson::doc! { "summaryId": summary_id })
+            .delete_one(mongodb::bson::doc! { "summary_id": summary_id })
             .await
             .map_err(|e| crate::error::AppError::DatabaseError(e.to_string()))?;
         Ok(())

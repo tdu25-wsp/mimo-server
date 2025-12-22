@@ -42,6 +42,7 @@ pub struct MemoUpdateRequest {
 #[async_trait::async_trait]
 pub trait MemoHandler: Send + Sync {
     async fn find_by_id(&self, memo_id: &str) -> Result<Option<Memo>>;
+    async fn find_by_ids(&self, memo_ids: &[String]) -> Result<Vec<Memo>>;
     async fn find_by_user_id(&self, user_id: &str) -> Result<Vec<Memo>>;
     async fn create(&self, memo: Memo) -> Result<Memo>;
     async fn update(&self, memo: Memo) -> Result<Memo>;
@@ -82,6 +83,17 @@ impl MemoHandler for MemoRepository {
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
         Ok(memo)
+    }
+
+    async fn find_by_ids(&self, memo_ids: &[String]) -> Result<Vec<Memo>> {
+        use futures::stream::TryStreamExt;
+        self.collection
+            .find(doc! { "memo_id": { "$in": memo_ids } })
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?
+            .try_collect()
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))
     }
 
     async fn create(&self, memo: Memo) -> Result<Memo> {

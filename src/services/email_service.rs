@@ -1,7 +1,6 @@
 use crate::error::{AppError, Result};
 use lettre::{
-    Message, SmtpTransport, Transport,
-    message::header::ContentType,
+    Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
 };
 use std::env;
@@ -23,13 +22,13 @@ impl EmailService {
         from_name: &str,
     ) -> Result<Self> {
         let credentials = Credentials::new(smtp_username.to_string(), smtp_password.to_string());
-        
+
         let smtp_transport = SmtpTransport::starttls_relay(smtp_host)
             .map_err(|e| AppError::EnvironmentError(format!("SMTP接続エラー: {}", e)))?
             .port(smtp_port)
             .credentials(credentials)
             .build();
-        
+
         Ok(Self {
             smtp_transport,
             from_email: from_email.to_string(),
@@ -39,34 +38,35 @@ impl EmailService {
 
     /// 環境変数からSMTP設定を読み込んで初期化（後方互換性のため残す）
     pub fn from_env() -> Result<Self> {
-        let smtp_host = env::var("SMTP_HOST")
-            .map_err(|_| AppError::EnvironmentError("SMTP_HOST環境変数が設定されていません".to_string()))?;
-        
+        let smtp_host = env::var("SMTP_HOST").map_err(|_| {
+            AppError::EnvironmentError("SMTP_HOST環境変数が設定されていません".to_string())
+        })?;
+
         let smtp_port = env::var("SMTP_PORT")
             .unwrap_or_else(|_| "587".to_string())
             .parse::<u16>()
             .map_err(|_| AppError::EnvironmentError("SMTP_PORTが無効です".to_string()))?;
-        
-        let smtp_username = env::var("SMTP_USERNAME")
-            .map_err(|_| AppError::EnvironmentError("SMTP_USERNAME環境変数が設定されていません".to_string()))?;
-        
-        let smtp_password = env::var("SMTP_PASSWORD")
-            .map_err(|_| AppError::EnvironmentError("SMTP_PASSWORD環境変数が設定されていません".to_string()))?;
-        
-        let from_email = env::var("SMTP_FROM_EMAIL")
-            .unwrap_or_else(|_| smtp_username.clone());
-        
-        let from_name = env::var("SMTP_FROM_NAME")
-            .unwrap_or_else(|_| "Mimo".to_string());
-        
+
+        let smtp_username = env::var("SMTP_USERNAME").map_err(|_| {
+            AppError::EnvironmentError("SMTP_USERNAME環境変数が設定されていません".to_string())
+        })?;
+
+        let smtp_password = env::var("SMTP_PASSWORD").map_err(|_| {
+            AppError::EnvironmentError("SMTP_PASSWORD環境変数が設定されていません".to_string())
+        })?;
+
+        let from_email = env::var("SMTP_FROM_EMAIL").unwrap_or_else(|_| smtp_username.clone());
+
+        let from_name = env::var("SMTP_FROM_NAME").unwrap_or_else(|_| "Mimo".to_string());
+
         let credentials = Credentials::new(smtp_username, smtp_password);
-        
+
         let smtp_transport = SmtpTransport::starttls_relay(&smtp_host)
             .map_err(|e| AppError::EnvironmentError(format!("SMTP接続エラー: {}", e)))?
             .port(smtp_port)
             .credentials(credentials)
             .build();
-        
+
         Ok(Self {
             smtp_transport,
             from_email,
@@ -123,9 +123,15 @@ Mimo Server
     /// メール送信（内部メソッド）
     async fn send_email(&self, to_email: &str, subject: &str, body: &str) -> Result<()> {
         let email = Message::builder()
-            .from(format!("{} <{}>", self.from_name, self.from_email).parse()
-                .map_err(|e| AppError::ValidationError(format!("送信元アドレスが無効: {}", e)))?)
-            .to(to_email.parse()
+            .from(
+                format!("{} <{}>", self.from_name, self.from_email)
+                    .parse()
+                    .map_err(|e| {
+                        AppError::ValidationError(format!("送信元アドレスが無効: {}", e))
+                    })?,
+            )
+            .to(to_email
+                .parse()
                 .map_err(|e| AppError::ValidationError(format!("送信先アドレスが無効: {}", e)))?)
             .subject(subject)
             .header(ContentType::TEXT_PLAIN)
@@ -134,12 +140,10 @@ Mimo Server
 
         // 非同期でメール送信（別スレッドで実行）
         let transport = self.smtp_transport.clone();
-        tokio::task::spawn_blocking(move || {
-            transport.send(&email)
-        })
-        .await
-        .map_err(|e| AppError::ValidationError(format!("メール送信タスクエラー: {}", e)))?
-        .map_err(|e| AppError::ValidationError(format!("メール送信エラー: {}", e)))?;
+        tokio::task::spawn_blocking(move || transport.send(&email))
+            .await
+            .map_err(|e| AppError::ValidationError(format!("メール送信タスクエラー: {}", e)))?
+            .map_err(|e| AppError::ValidationError(format!("メール送信エラー: {}", e)))?;
 
         Ok(())
     }

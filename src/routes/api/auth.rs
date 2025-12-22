@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time;
 
-use crate::server::AppState;
-use crate::repositories::auth::UserCreateRequest;
+use crate::auth::{create_decoding_key, extract_jti_from_token, extract_user_id_from_token};
 use crate::error::AppError;
-use crate::auth::{extract_user_id_from_token, extract_jti_from_token, create_decoding_key};
+use crate::repositories::auth::UserCreateRequest;
+use crate::server::AppState;
 
 // Cookie設定用定数
 static SAME_SITE: SameSite = SameSite::None;
@@ -27,7 +27,10 @@ pub fn create_auth_routes() -> Router<AppState> {
         .route("/auth/me", get(handle_get_current_user))
         .route("/auth/register/start", post(handle_start_registration))
         .route("/auth/register/verify", post(handle_verify_email))
-        .route("/auth/register/complete", post(handle_complete_registration))
+        .route(
+            "/auth/register/complete",
+            post(handle_complete_registration),
+        )
         .route("/auth/refresh", post(handle_refresh))
         .route("/auth/reset-password", post(handle_reset_password))
         .route("/auth/password/forgot", post(handle_forgot_password))
@@ -96,10 +99,16 @@ fn map_error(err: AppError) -> Response {
         AppError::AuthenticationError(msg) => (StatusCode::UNAUTHORIZED, msg),
         AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
         AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-        AppError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", msg)),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
+        AppError::DatabaseError(msg) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Database error: {}", msg),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal server error".to_string(),
+        ),
     };
-    
+
     (status, Json(json!({"error": message}))).into_response()
 }
 
@@ -110,7 +119,8 @@ async fn handle_login(
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // ログイン処理
-    let (access_token, refresh_token, user) = state.auth_service
+    let (access_token, refresh_token, user) = state
+        .auth_service
         .login(req.email, req.password)
         .await
         .map_err(map_error)?;
@@ -154,19 +164,19 @@ async fn handle_logout(
 
     // Cookieからトークンを取得してJTIを抽出
     let key = create_decoding_key(&state.auth_service.get_secret());
-    
+
     if let Some(access_token) = jar.get("access_token") {
         if let Ok(jti) = extract_jti_from_token(access_token.value(), &key) {
             jtis.push(jti);
         }
     }
-    
+
     if let Some(refresh_token) = jar.get("refresh_token") {
         if let Ok(jti) = extract_jti_from_token(refresh_token.value(), &key) {
             jtis.push(jti);
         }
     }
-    
+
     // トークンを無効化
     state.auth_service.logout(jtis).await.map_err(map_error)?;
 
@@ -184,20 +194,23 @@ async fn handle_get_current_user(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
     // アクセストークンを取得
-    let token = jar.get("access_token")
-        .ok_or_else(|| map_error(AppError::AuthenticationError("Authentication required".to_string())))?;
+    let token = jar.get("access_token").ok_or_else(|| {
+        map_error(AppError::AuthenticationError(
+            "Authentication required".to_string(),
+        ))
+    })?;
 
     // トークンからユーザーIDを取得
     let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key)
-        .map_err(map_error)?;
-    
+    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+
     // ユーザー情報を取得
-    let user = state.auth_service
+    let user = state
+        .auth_service
         .get_current_user(&user_id)
         .await
         .map_err(map_error)?;
-    
+
     Ok(Json(json!({
         "user": {
             "user_id": user.user_id,
@@ -214,7 +227,8 @@ async fn handle_start_registration(
     Json(req): Json<StartRegistrationRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // TODO: IPアドレスを取得して渡す
-    state.auth_service
+    state
+        .auth_service
         .start_registration(req.email, None)
         .await
         .map_err(map_error)?;
@@ -228,7 +242,8 @@ async fn handle_verify_email(
     jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
 ) -> Result<impl IntoResponse, Response> {
-    let registration_token = state.auth_service
+    let registration_token = state
+        .auth_service
         .verify_email_and_issue_registration_token(req.email, req.code)
         .await
         .map_err(map_error)?;
@@ -255,8 +270,13 @@ async fn handle_complete_registration(
     Json(req): Json<CompleteRegistrationRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // Cookieから登録トークンを取得
-    let registration_token = jar.get("registration_token")
-        .ok_or_else(|| map_error(AppError::ValidationError("Registration token not found".to_string())))?
+    let registration_token = jar
+        .get("registration_token")
+        .ok_or_else(|| {
+            map_error(AppError::ValidationError(
+                "Registration token not found".to_string(),
+            ))
+        })?
         .value()
         .to_string();
 
@@ -268,7 +288,8 @@ async fn handle_complete_registration(
     };
 
     // ユーザー登録
-    let (access_token, refresh_token, user) = state.auth_service
+    let (access_token, refresh_token, user) = state
+        .auth_service
         .complete_registration(registration_token, user_req)
         .await
         .map_err(map_error)?;
@@ -313,16 +334,19 @@ async fn handle_refresh(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
     // リフレッシュトークンを取得
-    let refresh_token = jar.get("refresh_token")
-        .ok_or_else(|| map_error(AppError::AuthenticationError("Refresh token required".to_string())))?;
+    let refresh_token = jar.get("refresh_token").ok_or_else(|| {
+        map_error(AppError::AuthenticationError(
+            "Refresh token required".to_string(),
+        ))
+    })?;
 
     // トークンからユーザーIDを取得
     let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(refresh_token.value(), &key)
-        .map_err(map_error)?;
+    let user_id = extract_user_id_from_token(refresh_token.value(), &key).map_err(map_error)?;
 
     // 新しいアクセストークンを発行
-    let access_token = state.auth_service
+    let access_token = state
+        .auth_service
         .refresh_access_token(&user_id)
         .await
         .map_err(map_error)?;
@@ -348,14 +372,17 @@ async fn handle_reset_password(
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // アクセストークンからユーザーIDを取得
-    let token = jar.get("access_token")
-        .ok_or_else(|| map_error(AppError::AuthenticationError("Authentication required".to_string())))?;
-    
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key)
-        .map_err(map_error)?;
+    let token = jar.get("access_token").ok_or_else(|| {
+        map_error(AppError::AuthenticationError(
+            "Authentication required".to_string(),
+        ))
+    })?;
 
-    state.auth_service
+    let key = create_decoding_key(&state.auth_service.get_secret());
+    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+
+    state
+        .auth_service
         .reset_password(&user_id, &req.old_password, &req.new_password)
         .await
         .map_err(map_error)?;
@@ -369,12 +396,15 @@ async fn handle_forgot_password(
     Json(req): Json<ForgotPasswordRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // TODO: IPアドレスを取得して渡す
-    state.auth_service
+    state
+        .auth_service
         .forgot_password(&req.email, None)
         .await
         .map_err(map_error)?;
 
-    Ok(Json(json!({"message": "Password reset code sent to email"})))
+    Ok(Json(
+        json!({"message": "Password reset code sent to email"}),
+    ))
 }
 
 /// ステップ2: リセットコード検証とトークン発行
@@ -384,7 +414,8 @@ async fn handle_verify_reset_code(
     jar: CookieJar,
     Json(req): Json<VerifyResetCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
-    let reset_token = state.auth_service
+    let reset_token = state
+        .auth_service
         .verify_reset_code_and_issue_reset_token(req.email, req.code)
         .await
         .map_err(map_error)?;
@@ -411,12 +442,18 @@ async fn handle_complete_password_reset(
     Json(req): Json<CompletePasswordResetRequest>,
 ) -> Result<impl IntoResponse, Response> {
     // Cookieからリセットトークンを取得
-    let reset_token = jar.get("reset_token")
-        .ok_or_else(|| map_error(AppError::ValidationError("Reset token not found".to_string())))?
+    let reset_token = jar
+        .get("reset_token")
+        .ok_or_else(|| {
+            map_error(AppError::ValidationError(
+                "Reset token not found".to_string(),
+            ))
+        })?
         .value()
         .to_string();
 
-    state.auth_service
+    state
+        .auth_service
         .complete_password_reset(&reset_token, &req.email, &req.new_password)
         .await
         .map_err(map_error)?;

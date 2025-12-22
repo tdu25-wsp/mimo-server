@@ -14,7 +14,10 @@ pub struct MemoService {
 
 impl MemoService {
     pub fn new(memo_repo: Arc<MemoRepository>, tag_service: Arc<TagService>) -> Self {
-        Self { memo_repo, tag_service }
+        Self {
+            memo_repo,
+            tag_service,
+        }
     }
 
     pub async fn find_by_user(&self, user_id: &str) -> Result<Vec<Memo>> {
@@ -33,7 +36,11 @@ impl MemoService {
         validate_memo_content(&req.content)?;
 
         // タグの自動推薦を試みる
-        let auto_tag_id = match self.tag_service.recommend_tag(&req.user_id, &req.content).await {
+        let auto_tag_id = match self
+            .tag_service
+            .recommend_tag(&req.user_id, &req.content)
+            .await
+        {
             Ok(Some(tag_id)) => Some(vec![tag_id]),
             Ok(None) | Err(_) => None, // 推薦失敗時やタグがない場合はNone
         };
@@ -77,7 +84,10 @@ fn validate_memo_content(content: &str) -> Result<()> {
         return Err(AppError::ValidationError("Content cannot be empty".into()));
     }
     if content.len() > maximum_length {
-        return Err(AppError::ValidationError(format!("Content cannot exceed {} characters", maximum_length)));
+        return Err(AppError::ValidationError(format!(
+            "Content cannot exceed {} characters",
+            maximum_length
+        )));
     }
     Ok(())
 }
