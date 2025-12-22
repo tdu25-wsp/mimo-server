@@ -6,12 +6,12 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::net::SocketAddr;
 use time;
 
-use crate::auth::{create_decoding_key, extract_jti_from_token, extract_user_id_from_token};
+use crate::auth::{extract_jti_from_token, extract_user_id_from_token};
 use crate::error::{AppError, map_error};
 use crate::repositories::auth::UserCreateRequest;
 use crate::server::AppState;
@@ -51,6 +51,8 @@ pub fn create_auth_routes() -> Router<AppState> {
         .route("/auth/login", post(handle_login))
         .route("/auth/logout", post(handle_logout))
         .route("/auth/me", get(handle_get_current_user))
+        .route("/auth/user", axum::routing::patch(handle_update_user))
+        .route("/auth/user", axum::routing::delete(handle_delete_user))
         .route("/auth/register/start", post(handle_start_registration))
         .route("/auth/register/verify", post(handle_verify_email))
         .route(
@@ -91,6 +93,13 @@ struct CompleteRegistrationRequest {
 }
 
 #[derive(Deserialize)]
+struct UpdateUserRequest {
+    email: Option<String>,
+    display_name: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ResetPasswordRequest {
     old_password: String,
     new_password: String,
@@ -111,12 +120,6 @@ struct VerifyResetCodeRequest {
 struct CompletePasswordResetRequest {
     email: String,
     new_password: String,
-}
-
-#[derive(Serialize)]
-struct AuthResponse {
-    message: String,
-    user: Option<serde_json::Value>,
 }
 
 /// ログイン処理
@@ -201,7 +204,7 @@ async fn handle_logout(
     let mut jtis = Vec::new();
 
     // Cookieからトークンを取得してJTIを抽出
-    let key = create_decoding_key(&state.auth_service.get_secret());
+    let key = &state.jwt_decoding_key;
 
     if let Some(access_token) = jar.get("access_token") {
         if let Ok(jti) = extract_jti_from_token(access_token.value(), &key) {
@@ -231,24 +234,11 @@ async fn handle_get_current_user(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
-    // アクセストークンを取得
-    let token = jar.get("access_token").ok_or_else(|| {
-        map_error(AppError::AuthenticationError(
-            "Authentication required".to_string(),
-        ))
-    })?;
-
-    // トークンからユーザーIDとJTIを取得
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
-    let jti = extract_jti_from_token(token.value(), &key).map_err(map_error)?;
-
-    // トークンが失効されていないか確認
-    if state.auth_service.is_token_revoked(&jti).await.map_err(map_error)? {
-        return Err(map_error(AppError::AuthenticationError(
-            "Token has been revoked".to_string(),
-        )));
-    }
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
 
     // ユーザー情報を取得
     let user = state
@@ -408,9 +398,9 @@ async fn handle_refresh(
     })?;
 
     // トークンからユーザーIDとJTIを取得
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(refresh_token.value(), &key).map_err(map_error)?;
-    let jti = extract_jti_from_token(refresh_token.value(), &key).map_err(map_error)?;
+    let key = &state.jwt_decoding_key;
+    let user_id = extract_user_id_from_token(refresh_token.value(), key).map_err(map_error)?;
+    let jti = extract_jti_from_token(refresh_token.value(), key).map_err(map_error)?;
 
     // トークンが失効されていないか確認
     if state.auth_service.is_token_revoked(&jti).await.map_err(map_error)? {
@@ -461,15 +451,11 @@ async fn handle_reset_password(
     jar: CookieJar,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<impl IntoResponse, Response> {
-    // アクセストークンからユーザーIDを取得
-    let token = jar.get("access_token").ok_or_else(|| {
-        map_error(AppError::AuthenticationError(
-            "Authentication required".to_string(),
-        ))
-    })?;
-
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
 
     state
         .auth_service
@@ -478,6 +464,84 @@ async fn handle_reset_password(
         .map_err(map_error)?;
 
     Ok(Json(json!({"message": "Password reset successful"})))
+}
+
+/// ユーザー情報更新
+async fn handle_update_user(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<UpdateUserRequest>,
+) -> Result<impl IntoResponse, Response> {
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
+
+    let update_req = crate::repositories::auth::UserUpdateRequest {
+        email: req.email,
+        display_name: req.display_name,
+        password: req.password,
+    };
+
+    let user = state
+        .auth_service
+        .update_user(&user_id, update_req)
+        .await
+        .map_err(map_error)?;
+
+    Ok(Json(json!({
+        "message": "User updated successfully",
+        "user": {
+            "user_id": user.user_id,
+            "email": user.email,
+            "display_name": user.display_name,
+        }
+    })))
+}
+
+/// ユーザー削除（論理削除）
+async fn handle_delete_user(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, Response> {
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
+
+    state
+        .auth_service
+        .delete_user(&user_id)
+        .await
+        .map_err(map_error)?;
+
+    // ユーザー削除後、すべてのトークンを無効化
+    let key = &state.jwt_decoding_key;
+    let mut jtis = Vec::new();
+
+    if let Some(access_token) = jar.get("access_token") {
+        if let Ok(jti) = extract_jti_from_token(access_token.value(), &key) {
+            jtis.push(jti);
+        }
+    }
+    if let Some(refresh_token) = jar.get("refresh_token") {
+        if let Ok(jti) = extract_jti_from_token(refresh_token.value(), &key) {
+            jtis.push(jti);
+        }
+    }
+    state.auth_service.logout(jtis).await.map_err(map_error)?;
+
+    // Cookieを削除
+    let jar = jar
+        .remove(Cookie::from("refresh_token"))
+        .remove(Cookie::from("access_token"));
+
+    Ok((
+        jar,
+        Json(json!({"message": "User deleted successfully"})),
+    ))
 }
 
 /// ステップ1: パスワード忘れ（確認コード送信）

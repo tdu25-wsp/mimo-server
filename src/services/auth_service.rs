@@ -486,11 +486,6 @@ impl AuthService {
         self.verification_store.stats()
     }
 
-    /// JWT秘密鍵の参照を取得
-    pub fn get_secret(&self) -> &str {
-        &self.jwt_secret
-    }
-
     /// ユーザー作成時にデフォルトタグを作成
     async fn create_default_tags(&self, user_id: &str) -> Result<()> {
         // デフォルトで作成するタグのリスト
@@ -522,13 +517,6 @@ impl AuthService {
     }
 
     /// アクセストークンからユーザーIDを取得し、トークン失効をチェック
-    /// 
-    /// # Arguments
-    /// * `jar` - CookieJar from the request
-    /// 
-    /// # Returns
-    /// * `Ok(String)` - 認証されたユーザーID
-    /// * `Err(Response)` - エラーレスポンス
     pub async fn extract_and_verify_user_from_access_token(
         &self,
         jar: &CookieJar,

@@ -1,5 +1,4 @@
 use crate::error::{AppError, Result};
-use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -191,65 +190,6 @@ pub fn extract_jti_from_token(token: &str, key: &DecodingKey) -> Result<String> 
     Ok(token_data.claims.jti)
 }
 
-/// リフレッシュトークンの検証
-/// 引数: &UserID, &JWT
-/// 戻り値: Result<(), 任意のError>
-pub fn validate_refresh_token(user_id: &str, token: &str, key: &DecodingKey) -> Result<()> {
-    let mut validation = Validation::new(JWT_ALGORITHM);
-    validation.set_audience(&["mimo-client"]);
-    let token_data = decode::<JwtClaim>(token, key, &validation)
-        .map_err(|e| AppError::ValidationError(e.to_string()))?;
-    let claims = token_data.claims;
-
-    if claims.typ != TokenType::Refresh {
-        return Err(AppError::ValidationError(
-            "Token type is not Refresh".to_string(),
-        ));
-    }
-    if claims.sub != user_id {
-        return Err(AppError::ValidationError(
-            "User ID does not match".to_string(),
-        ));
-    }
-
-    Ok(())
-}
-
-/// アクセストークンの検証
-/// 引数: &UserID, 要求する権限, &JWT
-/// 戻り値: Result<(), 任意のError>
-pub fn validate_access_token(
-    user_id: &str,
-    required_role: Role,
-    token: &str,
-    key: &DecodingKey,
-) -> Result<()> {
-    let mut validation = Validation::new(JWT_ALGORITHM);
-    validation.set_audience(&["mimo-client"]);
-    let token_data = decode::<JwtClaim>(token, key, &validation)
-        .map_err(|e| AppError::ValidationError(e.to_string()))?;
-    let claims = token_data.claims;
-
-    if claims.typ != TokenType::Access {
-        return Err(AppError::ValidationError(
-            "Token type is not Access".to_string(),
-        ));
-    }
-    if claims.sub != user_id {
-        return Err(AppError::ValidationError(
-            "User ID does not match".to_string(),
-        ));
-    }
-
-    // 権限のチェック
-    match claims.role {
-        Some(r) if r.contains(&required_role) => Ok(()),
-        _ => Err(AppError::ValidationError(
-            "Insufficient permissions".to_string(),
-        )),
-    }
-}
-
 /// 登録用トークンの発行
 /// 引数: メールアドレス, 秘密鍵
 /// 戻り値: Result<JWT, AppError>
@@ -352,15 +292,4 @@ pub fn validate_password_reset_token(
     }
 
     Ok(claims.jti)
-}
-
-//////
-// ヘルパー関数: CookieからJWTを検証してユーザーIDを取得
-
-pub fn authenticate_from_cookie(jar: &CookieJar, decoding_key: &DecodingKey) -> Result<String> {
-    let access_token = jar
-        .get("access_token")
-        .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
-
-    extract_user_id_from_token(access_token.value(), decoding_key)
 }

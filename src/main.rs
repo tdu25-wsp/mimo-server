@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
     // AppState の構築
     let state = AppState {
         jwt_decoding_key: auth::create_decoding_key(&jwt_secret),
-        auth_service,
+        auth_service: auth_service.clone(),
         memo_service,
         summary_service,
         tag_service,
@@ -112,6 +112,31 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(config.clone()),
     };
     println!("Constructed AppState");
+
+    // JWT Revocationのクリーンアップ（起動時）
+    println!("Cleaning up expired JWT revocations...");
+    let auth_repo = repositories::AuthRepository::new(pg_pool.clone());
+    if let Err(e) = auth_repo.cleanup_expired_tokens().await {
+        eprintln!("Warning: Failed to cleanup expired tokens on startup: {}", e);
+    } else {
+        println!("Initial JWT revocation cleanup completed");
+    }
+
+    // 定期的なクリーンアップタスクを起動（3日に1回）
+    let auth_repo_for_cleanup = repositories::AuthRepository::new(pg_pool.clone());
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3 * 24 * 60 * 60));
+        loop {
+            interval.tick().await;
+            println!("Running scheduled JWT revocation cleanup...");
+            if let Err(e) = auth_repo_for_cleanup.cleanup_expired_tokens().await {
+                eprintln!("Error during scheduled JWT revocation cleanup: {}", e);
+            } else {
+                println!("Scheduled JWT revocation cleanup completed");
+            }
+        }
+    });
+    println!("Scheduled JWT revocation cleanup task started (every 3 days)");
 
     // サーバー起動
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)

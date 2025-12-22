@@ -21,21 +21,13 @@ pub struct MemoList {
 }
 
 #[derive(Deserialize)]
-pub struct MemoRequest {
-    pub memo_id: Vec<String>,
-}
-
-#[derive(Deserialize)]
 pub struct MemoCreateRequest {
     pub user_id: String,
-    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
-    pub memo_id: String,
-    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 

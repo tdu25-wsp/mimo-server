@@ -15,7 +15,6 @@ pub enum AppError {
     ExternalServiceError(String), // 外部サービス関連のエラー
     ConfigError(String), // APIキー設定エラー
     AuthenticationError(String),
-    Unauthorized(String),
     Forbidden(String),
 }
 
@@ -30,7 +29,6 @@ impl std::fmt::Display for AppError {
             AppError::ExternalServiceError(msg) => write!(f, "External service error: {}", msg), // 外部サービス関連のエラー
             AppError::ConfigError(msg) => write!(f, "Configuration error: {}", msg), // APIキー設定エラー
             AppError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
-            AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             AppError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
         }
     }
@@ -54,7 +52,6 @@ impl IntoResponse for AppError {
             AppError::ConfigError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::ExternalServiceError(msg) => (StatusCode::BAD_GATEWAY, msg),
             AppError::AuthenticationError(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
         };
 

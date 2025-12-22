@@ -82,24 +82,6 @@ impl AuthRepository {
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
         Ok(())
     }
-
-    /// パスワード忘れ（実装予定）
-    pub async fn forgot_password(&self, _user_id: &str) -> Result<()> {
-        // TODO: メール送信などの実装
-        Ok(())
-    }
-
-    /// 検証コード確認（実装予定）
-    pub async fn verify_code(&self, _user_id: &str, _code: &str) -> Result<bool> {
-        // TODO: 検証コードの実装
-        Ok(true)
-    }
-
-    /// メールアドレス検証（実装予定）
-    pub async fn verify_email(&self, _user_id: &str, _email: &str) -> Result<bool> {
-        // TODO: メール検証の実装
-        Ok(true)
-    }
 }
 
 ////////
@@ -188,35 +170,53 @@ impl AuthRepository {
 
     /// ユーザー情報を更新
     pub async fn update_user(&self, user_id: &str, req: UserUpdateRequest) -> Result<UserResponse> {
-        let now = chrono::Utc::now();
-        
-        let row = if let Some(password) = req.password {
-            // パスワード変更あり
+        let mut query_parts = Vec::new();
+        let mut bind_count = 1;
+
+        if req.email.is_some() {
+            query_parts.push(format!("email = ${}", bind_count));
+            bind_count += 1;
+        }
+        if req.display_name.is_some() {
+            query_parts.push(format!("display_name = ${}", bind_count));
+            bind_count += 1;
+        }
+        if req.password.is_some() {
+            query_parts.push(format!("password_hash = ${}", bind_count));
+            bind_count += 1;
+        }
+
+        if query_parts.is_empty() {
+            return self.find_user_by_id(user_id).await?
+                .ok_or_else(|| AppError::NotFound("User not found".to_string()));
+        }
+
+        query_parts.push(format!("updated_at = ${}", bind_count));
+        let query_str = format!(
+            "UPDATE users SET {} WHERE user_id = ${} RETURNING user_id, email, display_name, created_at, updated_at, is_active",
+            query_parts.join(", "),
+            bind_count + 1
+        );
+
+        let mut query = sqlx::query(&query_str);
+
+        if let Some(email) = req.email {
+            query = query.bind(email);
+        }
+        if let Some(display_name) = req.display_name {
+            query = query.bind(display_name);
+        }
+        if let Some(password) = req.password {
             let password_hash = Self::hash_password(&password)?;
-            sqlx::query(
-                "UPDATE users SET email = $1, display_name = $2, password_hash = $3, updated_at = $4 WHERE user_id = $5 RETURNING user_id, email, display_name, created_at, updated_at, is_active"
-            )
-            .bind(&req.email)
-            .bind(&req.display_name)
-            .bind(&password_hash)
-            .bind(&now)
-            .bind(user_id)
-            .fetch_one(&self.pool)
+            query = query.bind(password_hash);
+        }
+
+        let now = chrono::Utc::now();
+        query = query.bind(now).bind(user_id);
+
+        let row = query.fetch_one(&self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(e.to_string()))?
-        } else {
-            // パスワード変更なし
-            sqlx::query(
-                "UPDATE users SET email = $1, display_name = $2, updated_at = $3 WHERE user_id = $4 RETURNING user_id, email, display_name, created_at, updated_at, is_active"
-            )
-            .bind(&req.email)
-            .bind(&req.display_name)
-            .bind(&now)
-            .bind(user_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(e.to_string()))?
-        };
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
         Ok(UserResponse {
             user_id: row.get("user_id"),
@@ -230,7 +230,8 @@ impl AuthRepository {
 
     /// ユーザーを削除（論理削除）
     pub async fn delete_user(&self, user_id: &str) -> Result<()> {
-        sqlx::query("UPDATE users SET is_active = FALSE WHERE user_id = $1")
+        sqlx::query("UPDATE users SET is_active = false, updated_at = $1 WHERE user_id = $2")
+            .bind(chrono::Utc::now())
             .bind(user_id)
             .execute(&self.pool)
             .await
