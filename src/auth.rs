@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::error::{AppError, Result};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
@@ -353,4 +351,16 @@ pub fn validate_password_reset_token(
     }
 
     Ok(claims.jti)
+}
+
+//////
+// ヘルパー関数: CookieからJWTを検証してユーザーIDを取得
+
+use axum_extra::extract::CookieJar;
+pub fn authenticate_from_cookie(jar: &CookieJar, decoding_key: &DecodingKey) -> Result<String> {
+    let access_token = jar
+        .get("access_token")
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    extract_user_id_from_token(access_token.value(), decoding_key)
 }

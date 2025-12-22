@@ -1,6 +1,6 @@
 use crate::error::{AppError, Result};
 use chrono::{DateTime, Utc};
-use mongodb::{bson::doc, options::FindOptions};
+use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

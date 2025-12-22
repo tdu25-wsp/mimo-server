@@ -103,7 +103,6 @@ async fn main() -> anyhow::Result<()> {
     // AppState の構築
     let state = AppState {
         jwt_decoding_key: auth::create_decoding_key(&jwt_secret),
-        jwt_secret,
         auth_service,
         memo_service,
         summary_service,

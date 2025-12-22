@@ -1,5 +1,5 @@
 use crate::{
-    auth::extract_user_id_from_token,
+    auth::authenticate_from_cookie,
     error::{AppError, Result},
     repositories::{AISummary, SummarizeRequest, SummaryList},
     server::AppState,
@@ -7,7 +7,7 @@ use crate::{
 use axum::{
     Router,
     extract::{Path, State},
-    response::{IntoResponse, Json},
+    response::Json,
     routing::{delete, get, patch, post},
 };
 use axum_extra::extract::CookieJar;
@@ -27,51 +27,23 @@ async fn summarize_memo(
     State(state): State<AppState>,
     jar: CookieJar,
     Json(req): Json<SummarizeRequest>,
-) -> impl IntoResponse {
-    let access_token = match jar.get("access_token") {
-        Some(token) => token,
-        None => {
-            return AppError::Unauthorized("Authentication required".to_string()).into_response();
-        }
-    };
+) -> Result<Json<AISummary>> {
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
-    let authenticated_user_id =
-        match extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key) {
-            Ok(user_id) => user_id,
-            Err(e) => return e.into_response(),
-        };
-
-    match state
+    let summary = state
         .summary_service
         .summarize_and_save(authenticated_user_id, req.memo_ids)
-        .await
-    {
-        Ok(summary) => Json(summary).into_response(),
-        Err(e) => e.into_response(),
-    }
+        .await?;
+
+    Ok(Json(summary))
 }
 
 async fn get_summary(
-    jar: CookieJar,
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(summary_id): Path<String>,
 ) -> Result<Json<AISummary>> {
-    let access_token = match jar.get("access_token") {
-        Some(token) => token,
-        None => {
-            return Err(AppError::Unauthorized(
-                "Authentication required".to_string(),
-            ));
-        }
-    };
-
-    let authenticated_user_id =
-        match extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key) {
-            Ok(user_id) => user_id,
-            Err(e) => {
-                return Err(e);
-            }
-        };
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     let summary = state
         .summary_service
@@ -85,68 +57,48 @@ async fn get_summaries(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(user_id): Path<String>,
-) -> impl IntoResponse {
-    let access_token = match jar.get("access_token") {
-        Some(token) => token,
-        None => {
-            return AppError::Unauthorized("Authentication required".to_string()).into_response();
-        }
-    };
-
-    let authenticated_user_id =
-        match extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key) {
-            Ok(user_id) => user_id,
-            Err(e) => return e.into_response(),
-        };
+) -> Result<Json<SummaryList>> {
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     // パスからのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != user_id {
-        return AppError::Forbidden("Access denied".to_string()).into_response();
+        return Err(AppError::Forbidden("Access denied".to_string()));
     }
 
-    match state.summary_service.get_user_journals(&user_id).await {
-        Ok(summaries) => Json(SummaryList { summaries }).into_response(),
-        Err(e) => e.into_response(),
-    }
+    let summaries = state.summary_service.get_user_journals(&user_id).await?;
+    Ok(Json(SummaryList { summaries }))
 }
 
 async fn delete_summary(
-    jar: CookieJar,
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(summary_id): Path<String>,
-) -> impl IntoResponse {
-    let access_token = match jar.get("access_token") {
-        Some(token) => token,
-        None => {
-            return AppError::Unauthorized("Authentication required".to_string()).into_response();
-        }
-    };
-
-    let authenticated_user_id =
-        match extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key) {
-            Ok(user_id) => user_id,
-            Err(e) => return e.into_response(),
-        };
+) -> Result<Json<serde_json::Value>> {
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     state
         .summary_service
         .delete_summary(&authenticated_user_id, &summary_id)
-        .await
-        .into_response()
+        .await?;
+
+    Ok(Json(json!({
+        "status": "success",
+        "message": "Summary deleted successfully"
+    })))
 }
 
-async fn set_frequency(jar: CookieJar) -> impl IntoResponse {
-    // Implementation here
-    Json(json!({
+async fn set_frequency(jar: CookieJar) -> Result<Json<serde_json::Value>> {
+    // TODO: Implementation here
+    Ok(Json(json!({
         "status": "success",
         "message": "Frequency retrieved successfully"
-    }))
+    })))
 }
 
-async fn update_frequency(jar: CookieJar) -> impl IntoResponse {
-    // Implementation here
-    Json(json!({
+async fn update_frequency(jar: CookieJar) -> Result<Json<serde_json::Value>> {
+    // TODO: Implementation here
+    Ok(Json(json!({
         "status": "success",
         "message": "Frequency updated successfully"
-    }))
+    })))
 }

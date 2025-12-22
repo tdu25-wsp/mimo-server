@@ -1,14 +1,11 @@
 use axum::{
     Router,
     extract::{Path, State},
-    response::{IntoResponse, Json},
+    response::Json,
     routing::{delete, get, patch, post},
 };
 
 use axum_extra::extract::CookieJar;
-use chrono::{DateTime, Utc};
-use mongodb::action::Update;
-use serde::{Deserialize, Serialize, de};
 use serde_json::{Value, json};
 
 use crate::auth::extract_user_id_from_token;

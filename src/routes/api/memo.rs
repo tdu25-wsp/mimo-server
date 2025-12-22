@@ -4,11 +4,11 @@ use axum::{
     response::Json,
     routing::{delete, get, patch, post},
 };
-use axum_extra::extract::cookie::CookieJar;
+use axum_extra::extract::CookieJar;
 use serde_json::json;
 
 use crate::{
-    auth::extract_user_id_from_token,
+    auth::authenticate_from_cookie,
     error::{AppError, Result},
     repositories::{Memo, MemoCreateRequest, MemoList, MemoUpdateRequest},
     server::AppState,
@@ -28,12 +28,7 @@ async fn list_memos(
     jar: CookieJar,
     Path(user_id): Path<String>,
 ) -> Result<Json<MemoList>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     // パスからのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != user_id {
@@ -49,12 +44,7 @@ async fn create_memo(
     jar: CookieJar,
     Json(req): Json<MemoCreateRequest>,
 ) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     // リクエストのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != req.user_id {
@@ -70,12 +60,7 @@ async fn get_memo(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     let memo = state.memo_service.find_by_id(&id).await?;
 
@@ -93,12 +78,7 @@ async fn update_memo(
     Path(id): Path<String>,
     Json(req): Json<MemoUpdateRequest>,
 ) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     // 更新前にメモの所有者を確認
     let existing_memo = state.memo_service.find_by_id(&id).await?;
@@ -115,12 +95,7 @@ async fn delete_memo(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+    let authenticated_user_id = authenticate_from_cookie(&jar, &state.jwt_decoding_key)?;
 
     // 削除前にメモの所有者を確認
     let existing_memo = state.memo_service.find_by_id(&id).await?;

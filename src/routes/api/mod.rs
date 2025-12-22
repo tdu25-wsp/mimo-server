@@ -20,5 +20,5 @@ pub fn create_api_routes() -> Router<AppState> {
         .merge(create_sum_routes())
         .merge(create_memo_routes())
         .merge(create_tags_routes())
-        .merge(create_settings_routes())
+    // .merge(create_settings_routes())
 }
