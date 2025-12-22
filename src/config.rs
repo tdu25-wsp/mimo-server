@@ -111,8 +111,7 @@ impl Config {
                         .unwrap_or_else(|_| "Mimo Server".to_string()),
                 },
                 gemini: GeminiConfig {
-                    api_key: env::var("GEMINI_API_KEY")
-                        .unwrap_or_else(|_| String::new()),
+                    api_key: env::var("GEMINI_API_KEY").unwrap_or_else(|_| String::new()),
                 },
             });
         }
@@ -122,8 +121,9 @@ impl Config {
             "Failed to read Config.toml. Use environment variables or provide Config.toml",
         )?;
 
-        let mut config: Config = toml::from_str(&config_str).context("Failed to parse Config.toml")?;
-        
+        let mut config: Config =
+            toml::from_str(&config_str).context("Failed to parse Config.toml")?;
+
         // 環境変数があれば優先する
         if let Ok(secret) = env::var("JWT_SECRET") {
             config.jwt.secret = secret;
