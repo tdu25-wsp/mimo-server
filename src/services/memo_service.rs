@@ -51,7 +51,7 @@ impl MemoService {
             content: req.content,
             user_id: req.user_id,
             auto_tag_id,
-            manual_tag_id: req.tag_id,
+            manual_tag_id: None,
             share_url_token: None,
             created_at: now,
             updated_at: now,

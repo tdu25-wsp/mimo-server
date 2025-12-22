@@ -1,30 +1,58 @@
 use axum::{
     Router,
-    extract::State,
-    http::{StatusCode, header},
+    extract::{State, ConnectInfo},
+    http::{StatusCode, HeaderMap},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
-use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
-use serde::{Deserialize, Serialize};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
+use serde::Deserialize;
 use serde_json::json;
+use std::net::SocketAddr;
 use time;
 
-use crate::auth::{create_decoding_key, extract_jti_from_token, extract_user_id_from_token};
-use crate::error::AppError;
+use crate::auth::{extract_jti_from_token, extract_user_id_from_token};
+use crate::error::{AppError, map_error};
 use crate::repositories::auth::UserCreateRequest;
 use crate::server::AppState;
 
-// Cookie設定用定数
-static SAME_SITE: SameSite = SameSite::None;
-static COOKIE_SECURE: bool = false; // 開発中なのでhttpを許可
-static COOKIE_HTTP_ONLY: bool = true;
+/// クライアントの実際のIPアドレスを取得
+/// Cloudflare Tunnel経由の場合はCF-Connecting-IPヘッダーから取得
+fn get_client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
+    // 1. CF-Connecting-IP (Cloudflare推奨)
+    if let Some(ip) = headers.get("cf-connecting-ip") {
+        if let Ok(ip_str) = ip.to_str() {
+            return ip_str.to_string();
+        }
+    }
+    
+    // 2. X-Real-IP
+    if let Some(ip) = headers.get("x-real-ip") {
+        if let Ok(ip_str) = ip.to_str() {
+            return ip_str.to_string();
+        }
+    }
+    
+    // 3. X-Forwarded-For (最初のIPを取得)
+    if let Some(forwarded) = headers.get("x-forwarded-for") {
+        if let Ok(forwarded_str) = forwarded.to_str() {
+            if let Some(first_ip) = forwarded_str.split(',').next() {
+                return first_ip.trim().to_string();
+            }
+        }
+    }
+    
+    // 4. フォールバック: 直接接続のIP
+    addr.ip().to_string()
+}
 
 pub fn create_auth_routes() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(handle_login))
         .route("/auth/logout", post(handle_logout))
         .route("/auth/me", get(handle_get_current_user))
+        .route("/auth/user", axum::routing::patch(handle_update_user))
+        .route("/auth/user", axum::routing::delete(handle_delete_user))
         .route("/auth/register/start", post(handle_start_registration))
         .route("/auth/register/verify", post(handle_verify_email))
         .route(
@@ -65,6 +93,13 @@ struct CompleteRegistrationRequest {
 }
 
 #[derive(Deserialize)]
+struct UpdateUserRequest {
+    email: Option<String>,
+    display_name: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ResetPasswordRequest {
     old_password: String,
     new_password: String,
@@ -87,37 +122,39 @@ struct CompletePasswordResetRequest {
     new_password: String,
 }
 
-#[derive(Serialize)]
-struct AuthResponse {
-    message: String,
-    user: Option<serde_json::Value>,
-}
-
-// エラーレスポンス変換
-fn map_error(err: AppError) -> Response {
-    let (status, message) = match err {
-        AppError::AuthenticationError(msg) => (StatusCode::UNAUTHORIZED, msg),
-        AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
-        AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-        AppError::DatabaseError(msg) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Database error: {}", msg),
-        ),
-        _ => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        ),
-    };
-
-    (status, Json(json!({"error": message}))).into_response()
-}
-
 /// ログイン処理
 async fn handle_login(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, Response> {
+    // レート制限チェック（IPベース）
+    let ip = get_client_ip(&headers, &addr);
+    state
+        .auth_rate_limiter
+        .check_ip_limit(&ip)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
+    // ユーザーIDベースのレート制限
+    state
+        .auth_rate_limiter
+        .check_user_limit(&req.email)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
     // ログイン処理
     let (access_token, refresh_token, user) = state
         .auth_service
@@ -125,19 +162,23 @@ async fn handle_login(
         .await
         .map_err(map_error)?;
 
-    // Cookieを設定
+    // Cookieを設定（環境に応じて自動的に設定される）
+    let cookie_config = state.config.server.get_cookie_config();
+
     let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
         .path("/")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
+        .max_age(time::Duration::seconds(7 * 24 * 60 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
         .path("/")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
+        .max_age(time::Duration::seconds(60 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     let jar = jar.add(refresh_cookie).add(access_cookie);
@@ -163,7 +204,7 @@ async fn handle_logout(
     let mut jtis = Vec::new();
 
     // Cookieからトークンを取得してJTIを抽出
-    let key = create_decoding_key(&state.auth_service.get_secret());
+    let key = &state.jwt_decoding_key;
 
     if let Some(access_token) = jar.get("access_token") {
         if let Ok(jti) = extract_jti_from_token(access_token.value(), &key) {
@@ -193,16 +234,11 @@ async fn handle_get_current_user(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
-    // アクセストークンを取得
-    let token = jar.get("access_token").ok_or_else(|| {
-        map_error(AppError::AuthenticationError(
-            "Authentication required".to_string(),
-        ))
-    })?;
-
-    // トークンからユーザーIDを取得
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
 
     // ユーザー情報を取得
     let user = state
@@ -249,12 +285,14 @@ async fn handle_verify_email(
         .map_err(map_error)?;
 
     // 登録トークンをCookieに設定（15分間有効）
+    let cookie_config = state.config.server.get_cookie_config();
+
     let registration_cookie = Cookie::build(("registration_token", registration_token))
-        .path("/api/auth/register")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
-        .max_age(time::Duration::minutes(15))
+        .path("/")
+        .max_age(time::Duration::seconds(15 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     Ok((
@@ -295,18 +333,22 @@ async fn handle_complete_registration(
         .map_err(map_error)?;
 
     // Cookieを設定
+    let cookie_config = state.config.server.get_cookie_config();
+
     let refresh_cookie = Cookie::build(("refresh_token", refresh_token))
-        .path("/api/auth")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
+        .path("/")
+        .max_age(time::Duration::seconds(7 * 24 * 60 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     let access_cookie = Cookie::build(("access_token", access_token))
-        .path("/api")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
+        .path("/")
+        .max_age(time::Duration::seconds(60 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     // 登録トークンCookieを削除
@@ -331,8 +373,23 @@ async fn handle_complete_registration(
 /// トークンリフレッシュ
 async fn handle_refresh(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
+    // レート制限チェック（IPベース）
+    let ip = get_client_ip(&headers, &addr);
+    state
+        .auth_rate_limiter
+        .check_ip_limit(&ip)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
     // リフレッシュトークンを取得
     let refresh_token = jar.get("refresh_token").ok_or_else(|| {
         map_error(AppError::AuthenticationError(
@@ -340,9 +397,29 @@ async fn handle_refresh(
         ))
     })?;
 
-    // トークンからユーザーIDを取得
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(refresh_token.value(), &key).map_err(map_error)?;
+    // トークンからユーザーIDとJTIを取得
+    let key = &state.jwt_decoding_key;
+    let user_id = extract_user_id_from_token(refresh_token.value(), key).map_err(map_error)?;
+    let jti = extract_jti_from_token(refresh_token.value(), key).map_err(map_error)?;
+
+    // トークンが失効されていないか確認
+    if state.auth_service.is_token_revoked(&jti).await.map_err(map_error)? {
+        return Err(map_error(AppError::AuthenticationError(
+            "Token has been revoked".to_string(),
+        )));
+    }
+
+    // ユーザーIDベースのレート制限
+    state
+        .auth_rate_limiter
+        .check_user_limit(&user_id)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
 
     // 新しいアクセストークンを発行
     let access_token = state
@@ -352,11 +429,14 @@ async fn handle_refresh(
         .map_err(map_error)?;
 
     // 新しいアクセストークンをCookieに設定
+    let cookie_config = state.config.server.get_cookie_config();
+
     let access_cookie = Cookie::build(("access_token", access_token))
         .path("/")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
+        .max_age(time::Duration::seconds(60 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     Ok((
@@ -371,15 +451,11 @@ async fn handle_reset_password(
     jar: CookieJar,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<impl IntoResponse, Response> {
-    // アクセストークンからユーザーIDを取得
-    let token = jar.get("access_token").ok_or_else(|| {
-        map_error(AppError::AuthenticationError(
-            "Authentication required".to_string(),
-        ))
-    })?;
-
-    let key = create_decoding_key(&state.auth_service.get_secret());
-    let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
 
     state
         .auth_service
@@ -388,6 +464,84 @@ async fn handle_reset_password(
         .map_err(map_error)?;
 
     Ok(Json(json!({"message": "Password reset successful"})))
+}
+
+/// ユーザー情報更新
+async fn handle_update_user(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<UpdateUserRequest>,
+) -> Result<impl IntoResponse, Response> {
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
+
+    let update_req = crate::repositories::auth::UserUpdateRequest {
+        email: req.email,
+        display_name: req.display_name,
+        password: req.password,
+    };
+
+    let user = state
+        .auth_service
+        .update_user(&user_id, update_req)
+        .await
+        .map_err(map_error)?;
+
+    Ok(Json(json!({
+        "message": "User updated successfully",
+        "user": {
+            "user_id": user.user_id,
+            "email": user.email,
+            "display_name": user.display_name,
+        }
+    })))
+}
+
+/// ユーザー削除（論理削除）
+async fn handle_delete_user(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, Response> {
+    // アクセストークンからユーザーIDを取得・検証
+    let user_id = state
+        .auth_service
+        .extract_and_verify_user_from_access_token(&jar)
+        .await?;
+
+    state
+        .auth_service
+        .delete_user(&user_id)
+        .await
+        .map_err(map_error)?;
+
+    // ユーザー削除後、すべてのトークンを無効化
+    let key = &state.jwt_decoding_key;
+    let mut jtis = Vec::new();
+
+    if let Some(access_token) = jar.get("access_token") {
+        if let Ok(jti) = extract_jti_from_token(access_token.value(), &key) {
+            jtis.push(jti);
+        }
+    }
+    if let Some(refresh_token) = jar.get("refresh_token") {
+        if let Ok(jti) = extract_jti_from_token(refresh_token.value(), &key) {
+            jtis.push(jti);
+        }
+    }
+    state.auth_service.logout(jtis).await.map_err(map_error)?;
+
+    // Cookieを削除
+    let jar = jar
+        .remove(Cookie::from("refresh_token"))
+        .remove(Cookie::from("access_token"));
+
+    Ok((
+        jar,
+        Json(json!({"message": "User deleted successfully"})),
+    ))
 }
 
 /// ステップ1: パスワード忘れ（確認コード送信）
@@ -410,7 +564,7 @@ async fn handle_forgot_password(
 /// ステップ2: リセットコード検証とトークン発行
 async fn handle_verify_reset_code(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     jar: CookieJar,
     Json(req): Json<VerifyResetCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
@@ -421,12 +575,14 @@ async fn handle_verify_reset_code(
         .map_err(map_error)?;
 
     // リセットトークンをCookieに設定（30分間有効）
+    let cookie_config = state.config.server.get_cookie_config();
+
     let reset_cookie = Cookie::build(("reset_token", reset_token))
         .path("/")
-        .http_only(COOKIE_HTTP_ONLY)
-        .secure(COOKIE_SECURE)
-        .same_site(SAME_SITE)
-        .max_age(time::Duration::minutes(30))
+        .max_age(time::Duration::seconds(30 * 60))
+        .same_site(cookie_config.same_site)
+        .secure(cookie_config.secure)
+        .http_only(cookie_config.http_only)
         .build();
 
     Ok((

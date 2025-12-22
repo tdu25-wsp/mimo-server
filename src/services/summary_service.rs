@@ -1,14 +1,13 @@
 use crate::{
-    error::{AppError, Result}, // エラーハンドリング用
+    error::{AppError, Result},
     repositories::{
         AISummary, Memo, MemoHandler, MemoRepository, SummaryRepository, summary::SummaryHandler,
     },
 };
 use chrono::Utc;
-use reqwest::Client; // HTTPクライアント用
-use serde_json::json; // JSON構築用
-use std::sync::Arc;
-use std::{env, iter::Sum}; // 環境変数取得用
+use reqwest::Client;
+use serde_json::json;
+use std::{env, sync::Arc};
 use uuid::Uuid;
 
 pub struct SummaryService {
@@ -17,7 +16,6 @@ pub struct SummaryService {
 }
 
 impl SummaryService {
-    // コンストラクタで memo_repo も受け取る
     pub fn new(summary_repo: Arc<SummaryRepository>, memo_repo: Arc<MemoRepository>) -> Self {
         Self {
             summary_repo,
@@ -37,7 +35,7 @@ impl SummaryService {
             .await?
             .ok_or_else(|| AppError::DatabaseError("Summary not found".to_string()))?;
 
-        if (summary.user_id != user_id) {
+        if summary.user_id != user_id {
             return Err(AppError::Forbidden("Access denied".to_string()));
         }
 
@@ -50,16 +48,14 @@ impl SummaryService {
         user_id: String,
         memo_ids: Vec<String>,
     ) -> Result<AISummary> {
-        // 0. MemoIDからMemo本体を取得
-        let mut memos = Vec::new();
-        for id in &memo_ids {
-            // 見つかったメモだけを処理対象とする
-            if let Ok(Some(memo)) = self.memo_repo.find_by_id(id).await {
-                if memo.user_id == user_id {
-                    memos.push(memo);
-                }
-            }
-        }
+        // 0. MemoIDからMemo本体を取得し、user_idでフィルタリング
+        let memos = self
+            .memo_repo
+            .find_by_ids(&memo_ids)
+            .await?
+            .into_iter()
+            .filter(|memo| memo.user_id == user_id)
+            .collect::<Vec<Memo>>();
 
         // メモが空ならAPIを呼ばずにエラーを返す
         if memos.is_empty() {
@@ -107,11 +103,11 @@ impl SummaryService {
             println!("AIに送るテキスト:\n{}", input_text);
         }
 
-        // AIに送るプロンプトを作成
-        let prompt = format!(
-            "以下のメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。\n\n[メモ内容]\n{}",
-            input_text
-        );
+    // AIに送るプロンプトを作成
+    let prompt = format!(
+        "以下の箇条書きのメモは、あるユーザーの一日の記録です。これらを統合して、一日の振り返り日記のような自然な文章に要約してください。尚、タイトルを先頭に付けることとし、 # タイトル名 の形式で作成した上で改行してください。\n\n[メモ内容]\n{}",
+        input_text
+    );
 
         // APIキーの取得
         let api_key = env::var("GEMINI_API_KEY")

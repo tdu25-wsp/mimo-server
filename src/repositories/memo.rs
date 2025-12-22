@@ -1,6 +1,6 @@
 use crate::error::{AppError, Result};
 use chrono::{DateTime, Utc};
-use mongodb::{bson::doc, options::FindOptions};
+use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,21 +21,13 @@ pub struct MemoList {
 }
 
 #[derive(Deserialize)]
-pub struct MemoRequest {
-    pub memo_id: Vec<String>,
-}
-
-#[derive(Deserialize)]
 pub struct MemoCreateRequest {
     pub user_id: String,
-    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
-    pub memo_id: String,
-    pub tag_id: Option<Vec<String>>,
     pub content: String,
 }
 

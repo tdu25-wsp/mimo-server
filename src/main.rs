@@ -90,27 +90,53 @@ async fn main() -> anyhow::Result<()> {
         &config.email.from_name,
     )?);
     let verification_store = Arc::new(services::verification_store::VerificationStore::new());
-    let rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new());
+    let email_rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new());
+    let auth_rate_limiter = Arc::new(services::rate_limiter::AuthRateLimiter::new());
     let auth_service = Arc::new(AuthService::new(
         Arc::new(repositories::AuthRepository::new(pg_pool.clone())),
         tag_service.clone(),
         jwt_secret.clone(),
         email_service,
         verification_store,
-        rate_limiter,
+        email_rate_limiter,
     ));
 
     // AppState の構築
     let state = AppState {
         jwt_decoding_key: auth::create_decoding_key(&jwt_secret),
-        jwt_secret,
-        auth_service,
+        auth_service: auth_service.clone(),
         memo_service,
         summary_service,
         tag_service,
+        auth_rate_limiter,
         config: Arc::new(config.clone()),
     };
     println!("Constructed AppState");
+
+    // JWT Revocationのクリーンアップ（起動時）
+    println!("Cleaning up expired JWT revocations...");
+    let auth_repo = repositories::AuthRepository::new(pg_pool.clone());
+    if let Err(e) = auth_repo.cleanup_expired_tokens().await {
+        eprintln!("Warning: Failed to cleanup expired tokens on startup: {}", e);
+    } else {
+        println!("Initial JWT revocation cleanup completed");
+    }
+
+    // 定期的なクリーンアップタスクを起動（3日に1回）
+    let auth_repo_for_cleanup = repositories::AuthRepository::new(pg_pool.clone());
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3 * 24 * 60 * 60));
+        loop {
+            interval.tick().await;
+            println!("Running scheduled JWT revocation cleanup...");
+            if let Err(e) = auth_repo_for_cleanup.cleanup_expired_tokens().await {
+                eprintln!("Error during scheduled JWT revocation cleanup: {}", e);
+            } else {
+                println!("Scheduled JWT revocation cleanup completed");
+            }
+        }
+    });
+    println!("Scheduled JWT revocation cleanup task started (every 3 days)");
 
     // サーバー起動
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port)

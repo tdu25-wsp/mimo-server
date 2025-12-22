@@ -1,15 +1,14 @@
 use axum::{
     Router,
     extract::{Path, State},
-    response::Json,
+    response::{Json, Response},
     routing::{delete, get, patch, post},
 };
-use axum_extra::extract::cookie::CookieJar;
+use axum_extra::extract::CookieJar;
 use serde_json::json;
 
 use crate::{
-    auth::extract_user_id_from_token,
-    error::{AppError, Result},
+    error::{AppError, map_error},
     repositories::{Memo, MemoCreateRequest, MemoList, MemoUpdateRequest},
     server::AppState,
 };
@@ -27,20 +26,15 @@ async fn list_memos(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(user_id): Path<String>,
-) -> Result<Json<MemoList>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<MemoList>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // パスからのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let memos = state.memo_service.find_by_user(&user_id).await?;
+    let memos = state.memo_service.find_by_user(&user_id).await.map_err(map_error)?;
     Ok(Json(MemoList { memos }))
 }
 
@@ -48,20 +42,15 @@ async fn create_memo(
     State(state): State<AppState>,
     jar: CookieJar,
     Json(req): Json<MemoCreateRequest>,
-) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<Memo>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // リクエストのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != req.user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let memo = state.memo_service.create(req).await?;
+    let memo = state.memo_service.create(req).await.map_err(map_error)?;
     Ok(Json(memo))
 }
 
@@ -69,19 +58,14 @@ async fn get_memo(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
-) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
+) -> std::result::Result<Json<Memo>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
-
-    let memo = state.memo_service.find_by_id(&id).await?;
+    let memo = state.memo_service.find_by_id(&id).await.map_err(map_error)?;
 
     // メモの所有者と認証されたユーザーIDが一致するか確認
     if memo.user_id != authenticated_user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
     Ok(Json(memo))
@@ -92,21 +76,16 @@ async fn update_memo(
     jar: CookieJar,
     Path(id): Path<String>,
     Json(req): Json<MemoUpdateRequest>,
-) -> Result<Json<Memo>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<Memo>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // 更新前にメモの所有者を確認
-    let existing_memo = state.memo_service.find_by_id(&id).await?;
+    let existing_memo = state.memo_service.find_by_id(&id).await.map_err(map_error)?;
     if existing_memo.user_id != authenticated_user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let memo = state.memo_service.update_content(&id, req.content).await?;
+    let memo = state.memo_service.update_content(&id, req.content).await.map_err(map_error)?;
     Ok(Json(memo))
 }
 
@@ -114,21 +93,16 @@ async fn delete_memo(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>> {
-    let access_token = jar.get("access_token").ok_or(AppError::Unauthorized(
-        "Authentication required".to_string(),
-    ))?;
-
-    let authenticated_user_id =
-        extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<serde_json::Value>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // 削除前にメモの所有者を確認
-    let existing_memo = state.memo_service.find_by_id(&id).await?;
+    let existing_memo = state.memo_service.find_by_id(&id).await.map_err(map_error)?;
     if existing_memo.user_id != authenticated_user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    state.memo_service.delete(&id).await?;
+    state.memo_service.delete(&id).await.map_err(map_error)?;
     Ok(Json(json!({
         "status": "success",
         "message": format!("Memo deletion completed: {id}")

@@ -11,7 +11,7 @@ pub fn create_share_routes() -> Router<AppState> {
         .route("/test", get(handle_test))
 }
 
-async fn handle_get_share(jar: CookieJar, req: Path<String>) -> impl IntoResponse {
+async fn handle_get_share(_jar: CookieJar, _req: Path<String>) -> impl IntoResponse {
     Json(Memo {
         memo_id: "hoge".to_string(),
         user_id: "user_123".to_string(),

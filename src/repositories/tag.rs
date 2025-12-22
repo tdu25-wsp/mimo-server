@@ -1,7 +1,6 @@
+use crate::error::{AppError, Result};
 use chrono::{DateTime, Utc};
-use mongodb::action::Update;
 use serde::{Deserialize, Serialize};
-use crate::error::{Result, AppError};
 
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct Tag {
@@ -74,7 +73,7 @@ impl TagHandler for TagRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
-        
+
         Ok(tag)
     }
 
