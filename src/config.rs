@@ -108,7 +108,7 @@ impl CookieConfig {
                 // プロダクション環境: セキュアな設定
                 Self {
                     secure: true,
-                    same_site: axum_extra::extract::cookie::SameSite::None,
+                    same_site: axum_extra::extract::cookie::SameSite::Lax,
                     http_only: true,
                 }
             }

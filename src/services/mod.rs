@@ -12,4 +12,4 @@ pub use tag_service::TagService;
 pub use auth_service::AuthService;
 pub use email_service::EmailService;
 pub use verification_store::VerificationStore;
-pub use rate_limiter::EmailRateLimiter;
+pub use rate_limiter::{EmailRateLimiter, AuthRateLimiter};

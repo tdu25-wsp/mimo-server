@@ -63,3 +63,8 @@ impl IntoResponse for AppError {
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
+
+/// AppErrorをHTTPレスポンスに変換するヘルパー関数
+pub fn map_error(err: AppError) -> Response {
+    err.into_response()
+}

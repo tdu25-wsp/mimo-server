@@ -1,19 +1,50 @@
 use axum::{
     Router,
-    extract::State,
-    http::StatusCode,
+    extract::{State, ConnectInfo},
+    http::{StatusCode, HeaderMap},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::net::SocketAddr;
 use time;
 
 use crate::auth::{create_decoding_key, extract_jti_from_token, extract_user_id_from_token};
-use crate::error::AppError;
+use crate::error::{AppError, map_error};
 use crate::repositories::auth::UserCreateRequest;
 use crate::server::AppState;
+
+/// クライアントの実際のIPアドレスを取得
+/// Cloudflare Tunnel経由の場合はCF-Connecting-IPヘッダーから取得
+fn get_client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
+    // 1. CF-Connecting-IP (Cloudflare推奨)
+    if let Some(ip) = headers.get("cf-connecting-ip") {
+        if let Ok(ip_str) = ip.to_str() {
+            return ip_str.to_string();
+        }
+    }
+    
+    // 2. X-Real-IP
+    if let Some(ip) = headers.get("x-real-ip") {
+        if let Ok(ip_str) = ip.to_str() {
+            return ip_str.to_string();
+        }
+    }
+    
+    // 3. X-Forwarded-For (最初のIPを取得)
+    if let Some(forwarded) = headers.get("x-forwarded-for") {
+        if let Ok(forwarded_str) = forwarded.to_str() {
+            if let Some(first_ip) = forwarded_str.split(',').next() {
+                return first_ip.trim().to_string();
+            }
+        }
+    }
+    
+    // 4. フォールバック: 直接接続のIP
+    addr.ip().to_string()
+}
 
 pub fn create_auth_routes() -> Router<AppState> {
     Router::new()
@@ -88,31 +119,39 @@ struct AuthResponse {
     user: Option<serde_json::Value>,
 }
 
-// エラーレスポンス変換
-fn map_error(err: AppError) -> Response {
-    let (status, message) = match err {
-        AppError::AuthenticationError(msg) => (StatusCode::UNAUTHORIZED, msg),
-        AppError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
-        AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-        AppError::DatabaseError(msg) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Database error: {}", msg),
-        ),
-        _ => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        ),
-    };
-
-    (status, Json(json!({"error": message}))).into_response()
-}
-
 /// ログイン処理
 async fn handle_login(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, Response> {
+    // レート制限チェック（IPベース）
+    let ip = get_client_ip(&headers, &addr);
+    state
+        .auth_rate_limiter
+        .check_ip_limit(&ip)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
+    // ユーザーIDベースのレート制限
+    state
+        .auth_rate_limiter
+        .check_user_limit(&req.email)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
     // ログイン処理
     let (access_token, refresh_token, user) = state
         .auth_service
@@ -199,9 +238,17 @@ async fn handle_get_current_user(
         ))
     })?;
 
-    // トークンからユーザーIDを取得
+    // トークンからユーザーIDとJTIを取得
     let key = create_decoding_key(&state.auth_service.get_secret());
     let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+    let jti = extract_jti_from_token(token.value(), &key).map_err(map_error)?;
+
+    // トークンが失効されていないか確認
+    if state.auth_service.is_token_revoked(&jti).await.map_err(map_error)? {
+        return Err(map_error(AppError::AuthenticationError(
+            "Token has been revoked".to_string(),
+        )));
+    }
 
     // ユーザー情報を取得
     let user = state
@@ -336,8 +383,23 @@ async fn handle_complete_registration(
 /// トークンリフレッシュ
 async fn handle_refresh(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, Response> {
+    // レート制限チェック（IPベース）
+    let ip = get_client_ip(&headers, &addr);
+    state
+        .auth_rate_limiter
+        .check_ip_limit(&ip)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
+
     // リフレッシュトークンを取得
     let refresh_token = jar.get("refresh_token").ok_or_else(|| {
         map_error(AppError::AuthenticationError(
@@ -345,9 +407,29 @@ async fn handle_refresh(
         ))
     })?;
 
-    // トークンからユーザーIDを取得
+    // トークンからユーザーIDとJTIを取得
     let key = create_decoding_key(&state.auth_service.get_secret());
     let user_id = extract_user_id_from_token(refresh_token.value(), &key).map_err(map_error)?;
+    let jti = extract_jti_from_token(refresh_token.value(), &key).map_err(map_error)?;
+
+    // トークンが失効されていないか確認
+    if state.auth_service.is_token_revoked(&jti).await.map_err(map_error)? {
+        return Err(map_error(AppError::AuthenticationError(
+            "Token has been revoked".to_string(),
+        )));
+    }
+
+    // ユーザーIDベースのレート制限
+    state
+        .auth_rate_limiter
+        .check_user_limit(&user_id)
+        .map_err(|e| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": e})),
+            )
+                .into_response()
+        })?;
 
     // 新しいアクセストークンを発行
     let access_token = state
@@ -418,7 +500,7 @@ async fn handle_forgot_password(
 /// ステップ2: リセットコード検証とトークン発行
 async fn handle_verify_reset_code(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     jar: CookieJar,
     Json(req): Json<VerifyResetCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {

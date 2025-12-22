@@ -83,37 +83,37 @@ impl VerificationStore {
         code: &str,
         purpose: &VerificationPurpose,
     ) -> Result<bool, String> {
-        // スコープを明示的に分けることで、ガードの保持期間を最小化
         let key = (email.to_string(), purpose.clone());
-        let (is_expired, attempts, stored_code) = {
-            let entry = self
-                .verification_codes
-                .get(&key)
-                .ok_or_else(|| "Verification code not found".to_string())?;
+        
+        // get_mutを使って原子的にチェックと更新を行う
+        let mut entry = self
+            .verification_codes
+            .get_mut(&key)
+            .ok_or_else(|| "Verification code not found".to_string())?;
 
-            let now = Utc::now();
-            (now > entry.expires_at, entry.attempts, entry.code.clone())
-        }; // ここでReadガードが解放される
-
+        let now = Utc::now();
+        
         // 有効期限チェック
-        if is_expired {
+        if now > entry.expires_at {
+            drop(entry); // ロックを解放してから削除
             self.verification_codes.remove(&key);
             return Err("Verification code has expired".to_string());
         }
 
         // 試行回数チェック（5回まで）
-        if attempts >= 5 {
+        if entry.attempts >= 5 {
+            drop(entry);
             self.verification_codes.remove(&key);
             return Err("Too many attempts. Please request a new code".to_string());
         }
 
         // 試行回数をインクリメント
-        if let Some(mut entry) = self.verification_codes.get_mut(&key) {
-            entry.attempts += 1;
-        }
-
+        entry.attempts += 1;
+        let stored_code = entry.code.clone();
+        
         // コード照合
         if stored_code == code {
+            drop(entry); // ロックを解放してから削除
             self.verification_codes.remove(&key);
             Ok(true)
         } else {
@@ -135,37 +135,33 @@ impl VerificationStore {
 
     /// 登録トークンを検証
     pub fn verify_registration_token(&self, token: &str, email: &str) -> Result<(), String> {
-        // スコープを分けて、ガードの保持期間を最小化
-        let (is_expired, is_used, stored_email) = {
-            let entry = self
-                .registration_tokens
-                .get(token)
-                .ok_or_else(|| "Registration token not found".to_string())?;
+        // get_mutを使って原子的にチェックと更新を行う
+        let mut entry = self
+            .registration_tokens
+            .get_mut(token)
+            .ok_or_else(|| "Registration token not found".to_string())?;
 
-            let now = Utc::now();
-            (now > entry.expires_at, entry.used, entry.email.clone())
-        }; // ここでReadガードが解放される
-
+        let now = Utc::now();
+        
         // 有効期限チェック
-        if is_expired {
+        if now > entry.expires_at {
+            drop(entry); // ロックを解放してから削除
             self.registration_tokens.remove(token);
             return Err("Registration token has expired".to_string());
         }
 
-        // 使用済みチェック
-        if is_used {
+        // 使用済みチェック（Race Condition防止）
+        if entry.used {
             return Err("Registration token has already been used".to_string());
         }
 
         // メールアドレスチェック
-        if stored_email != email {
+        if entry.email != email {
             return Err("Email address does not match".to_string());
         }
 
-        // 使用済みにマーク
-        if let Some(mut entry) = self.registration_tokens.get_mut(token) {
-            entry.used = true;
-        }
+        // 使用済みフラグを立てる（原子的操作）
+        entry.used = true;
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use axum::{Router, http::Method};
+use axum::{Router, http::{Method, header}};
 use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -6,7 +6,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
-use crate::routes::{create_api_routes, create_share_routes};
+use crate::routes::create_api_routes;
 use crate::services::{AuthService, MemoService, SummaryService, TagService};
 
 /// アプリケーション全体で共有される状態
@@ -19,6 +19,8 @@ pub struct AppState {
     pub memo_service: Arc<MemoService>,
     pub summary_service: Arc<SummaryService>,
     pub tag_service: Arc<TagService>,
+    /// レート制限
+    pub auth_rate_limiter: Arc<crate::services::AuthRateLimiter>,
     /// アプリケーション設定
     pub config: Arc<Config>,
 }
@@ -47,6 +49,14 @@ pub async fn start_server(
             Method::PATCH,
             Method::DELETE,
         ])
+        .allow_headers(vec![
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+        ])
+        .expose_headers(vec![
+            header::CONTENT_TYPE,
+            header::SET_COOKIE,
+        ])
         .max_age(Duration::from_secs(180));
 
     println!("Creating routes...");
@@ -54,7 +64,8 @@ pub async fn start_server(
         .nest("/api", create_api_routes())
         //.nest("/share", create_share_routes())
         .with_state(state)
-        .layer(cors);
+        .layer(cors)
+        .into_make_service_with_connect_info::<SocketAddr>();
 
     let listener = TcpListener::bind(addr).await?;
     println!("Server is running on http://{}", addr);

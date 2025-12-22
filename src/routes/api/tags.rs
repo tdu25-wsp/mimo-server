@@ -1,17 +1,16 @@
 use axum::{
     Router,
     extract::{Path, State},
-    response::Json,
+    response::{Json, Response},
     routing::{delete, get, patch, post},
 };
 
 use axum_extra::extract::CookieJar;
 use serde_json::{Value, json};
 
-use crate::auth::extract_user_id_from_token;
 use crate::server::AppState;
 use crate::repositories::{Tag, TagList, CreateTagRequest, UpdateTagRequest};
-use crate::error::{AppError, Result};
+use crate::error::{AppError, map_error};
 
 pub fn create_tags_routes() -> Router<AppState> {
     Router::new()
@@ -26,19 +25,15 @@ async fn handle_create_tag(
     jar: CookieJar,
     Path(user_id): Path<String>,
     Json(req): Json<CreateTagRequest>,
-) -> Result<Json<Tag>> {
-    let access_token = jar
-        .get("access_token")
-        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
-
-    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<Tag>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // パスからのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let tag = state.tag_service.create_tag(&user_id, req).await?;
+    let tag = state.tag_service.create_tag(&user_id, req).await.map_err(map_error)?;
     Ok(Json(tag))
 }
 
@@ -46,19 +41,15 @@ async fn handle_get_tag_list(
     jar: CookieJar,
     Path(user_id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<TagList>> {
-    let access_token = jar
-        .get("access_token")
-        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
-
-    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
+) -> std::result::Result<Json<TagList>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
     // パスからのuser_idと認証されたユーザーIDが一致するか確認
     if authenticated_user_id != user_id {
-        return Err(AppError::Forbidden("Access denied".to_string()));
+        return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let tags = state.tag_service.get_tags_by_user(&user_id).await?;
+    let tags = state.tag_service.get_tags_by_user(&user_id).await.map_err(map_error)?;
     Ok(Json(TagList { tags }))
 }
 
@@ -67,14 +58,10 @@ async fn handle_update_tag(
     Path(tag_id): Path<String>,
     State(state): State<AppState>,
     Json(req): Json<UpdateTagRequest>,
-) -> Result<Json<Tag>> {
-    let access_token = jar
-        .get("access_token")
-        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+) -> std::result::Result<Json<Tag>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
-    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
-
-    let updated_tag = state.tag_service.update_tag(&authenticated_user_id, &tag_id, req).await?;
+    let updated_tag = state.tag_service.update_tag(&authenticated_user_id, &tag_id, req).await.map_err(map_error)?;
     Ok(Json(updated_tag))
 }
 
@@ -82,13 +69,9 @@ async fn handle_delete_tag(
     jar: CookieJar,
     Path(tag_id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<Value>> {
-    let access_token = jar
-        .get("access_token")
-        .ok_or(AppError::Unauthorized("Authentication required".to_string()))?;
+) -> std::result::Result<Json<Value>, Response> {
+    let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
-    let authenticated_user_id = extract_user_id_from_token(access_token.value(), &state.jwt_decoding_key)?;
-
-    state.tag_service.delete_tag(&authenticated_user_id, &tag_id).await?;
+    state.tag_service.delete_tag(&authenticated_user_id, &tag_id).await.map_err(map_error)?;
     Ok(Json(json!({"status": format!("tag_id: {} deleted", tag_id)})))
 }

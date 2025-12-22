@@ -1,4 +1,5 @@
 use crate::error::{AppError, Result};
+use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -356,7 +357,6 @@ pub fn validate_password_reset_token(
 //////
 // ヘルパー関数: CookieからJWTを検証してユーザーIDを取得
 
-use axum_extra::extract::CookieJar;
 pub fn authenticate_from_cookie(jar: &CookieJar, decoding_key: &DecodingKey) -> Result<String> {
     let access_token = jar
         .get("access_token")

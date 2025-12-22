@@ -90,14 +90,15 @@ async fn main() -> anyhow::Result<()> {
         &config.email.from_name,
     )?);
     let verification_store = Arc::new(services::verification_store::VerificationStore::new());
-    let rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new());
+    let email_rate_limiter = Arc::new(services::rate_limiter::EmailRateLimiter::new());
+    let auth_rate_limiter = Arc::new(services::rate_limiter::AuthRateLimiter::new());
     let auth_service = Arc::new(AuthService::new(
         Arc::new(repositories::AuthRepository::new(pg_pool.clone())),
         tag_service.clone(),
         jwt_secret.clone(),
         email_service,
         verification_store,
-        rate_limiter,
+        email_rate_limiter,
     ));
 
     // AppState の構築
@@ -107,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         memo_service,
         summary_service,
         tag_service,
+        auth_rate_limiter,
         config: Arc::new(config.clone()),
     };
     println!("Constructed AppState");

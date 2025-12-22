@@ -1,10 +1,13 @@
 use crate::auth::{
-    Role, create_decoding_key, issue_access_token, issue_password_reset_token, issue_refresh_token,
+    Role, create_decoding_key, extract_jti_from_token, extract_user_id_from_token,
+    issue_access_token, issue_password_reset_token, issue_refresh_token,
     issue_registration_token, validate_display_name_format, validate_email_format,
     validate_password_format, validate_password_reset_token, validate_registration_token,
     validate_user_id_format,
 };
-use crate::error::{AppError, Result};
+use crate::error::{AppError, Result, map_error};
+use axum::response::Response;
+use axum_extra::extract::CookieJar;
 use crate::repositories::auth::{
     AuthRepository, UserCreateRequest, UserLoginRequest, UserResponse, UserUpdateRequest,
 };
@@ -516,5 +519,39 @@ impl AuthService {
         }
 
         Ok(())
+    }
+
+    /// アクセストークンからユーザーIDを取得し、トークン失効をチェック
+    /// 
+    /// # Arguments
+    /// * `jar` - CookieJar from the request
+    /// 
+    /// # Returns
+    /// * `Ok(String)` - 認証されたユーザーID
+    /// * `Err(Response)` - エラーレスポンス
+    pub async fn extract_and_verify_user_from_access_token(
+        &self,
+        jar: &CookieJar,
+    ) -> std::result::Result<String, Response> {
+        let token = jar
+            .get("access_token")
+            .ok_or_else(|| {
+                map_error(AppError::AuthenticationError(
+                    "Authentication required".to_string(),
+                ))
+            })?;
+
+        let key = create_decoding_key(&self.jwt_secret);
+        let user_id = extract_user_id_from_token(token.value(), &key).map_err(map_error)?;
+        let jti = extract_jti_from_token(token.value(), &key).map_err(map_error)?;
+
+        // トークンが失効されていないか確認
+        if self.is_token_revoked(&jti).await.map_err(map_error)? {
+            return Err(map_error(AppError::AuthenticationError(
+                "Token has been revoked".to_string(),
+            )));
+        }
+
+        Ok(user_id)
     }
 }
