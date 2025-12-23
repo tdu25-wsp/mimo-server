@@ -3,7 +3,7 @@ use axum::{
     extract::{State, ConnectInfo},
     http::{StatusCode, HeaderMap},
     response::{IntoResponse, Json, Response},
-    routing::{get, post},
+    routing::{get, post, patch, delete},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::Deserialize;
@@ -51,8 +51,8 @@ pub fn create_auth_routes() -> Router<AppState> {
         .route("/auth/login", post(handle_login))
         .route("/auth/logout", post(handle_logout))
         .route("/auth/me", get(handle_get_current_user))
-        .route("/auth/user", axum::routing::patch(handle_update_user))
-        .route("/auth/user", axum::routing::delete(handle_delete_user))
+        .route("/auth/user", patch(handle_update_user))
+        .route("/auth/user", delete(handle_delete_user))
         .route("/auth/register/start", post(handle_start_registration))
         .route("/auth/register/verify", post(handle_verify_email))
         .route(

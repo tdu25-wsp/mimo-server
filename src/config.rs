@@ -116,7 +116,7 @@ impl CookieConfig {
                 // 開発環境: ローカルテスト向け
                 Self {
                     secure: false,
-                    same_site: axum_extra::extract::cookie::SameSite::Lax,
+                    same_site: axum_extra::extract::cookie::SameSite::None,
                     http_only: true,
                 }
             }
