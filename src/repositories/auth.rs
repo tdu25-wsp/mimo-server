@@ -59,7 +59,7 @@ impl AuthRepository {
     /// ログアウト処理（JWTを無効化）
     pub async fn logout(&self, jtis: Vec<String>) -> Result<()> {
         for jti in jtis {
-            self.revoke_jwt(&jti, &chrono::Utc::now().to_string()).await?;
+            self.revoke_jwt(&jti, chrono::Utc::now()).await?;
         }
         Ok(())
     }
@@ -245,7 +245,7 @@ impl AuthRepository {
 ////////
 impl AuthRepository {
     /// JWTを無効化
-    pub async fn revoke_jwt(&self, jti: &str, exp: &str) -> Result<()> {
+    pub async fn revoke_jwt(&self, jti: &str, exp: chrono::DateTime<chrono::Utc>) -> Result<()> {
         sqlx::query(
             "INSERT INTO jwt_revocations (jti, expires_at, revoked_at) VALUES ($1, $2, now())",
         )

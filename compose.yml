@@ -9,21 +9,23 @@ services:
       - "5050:5050"
     restart: unless-stopped
     environment:
-      - POSTGRES_CONNECTION_URL=postgresql://${POSTGRES_USER:-mimo}:${POSTGRES_PASSWORD}@postgres:5432
+      - POSTGRES_CONNECTION_URL=${POSTGRES_CONNECTION_URL:-postgresql://mimo:password@postgres:5432}
       - POSTGRES_DB_NAME=${POSTGRES_DB_NAME:-mimo_db}
-      - MONGODB_CONNECTION_URI=mongodb://${MONGO_USER:-mimo}:${MONGO_PASSWORD}@mongodb:27017
+      - MONGODB_CONNECTION_URI=${MONGODB_CONNECTION_URI:-mongodb://mimo:password@mongodb:27017}
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-mimo_db}
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=5050
-      - LOG_LEVEL=info
+      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
+      - SERVER_PORT=${SERVER_PORT:-5050}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
       - JWT_SECRET=${JWT_SECRET}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USERNAME=${SMTP_USERNAME}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Mimo Server}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,7 +45,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mimo}"]
       interval: 10s
@@ -61,13 +63,9 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
+      - ./data/mongodb:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-volumes:
-  postgres_data:
-  mongodb_data:
