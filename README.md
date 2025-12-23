@@ -4,7 +4,7 @@ Mimo Server API について仕様を説明します。
 
 | ホスト | プロトコル | データ形式 |
 
-|  | https | JSON |
+| --- | https | JSON |
 
 
 
@@ -20,7 +20,7 @@ Cookie: access_token=eyJhbGciOiJIUzI1NiIsInR5cCI...; refresh_token=...
 下記のコードを返却します。
 
 | ステータスコード | 説明 |
-| - | - |
+| --- | --- |
 | 200 | リクエスト成功 |
 | 201 | 登録成功 |
 | 204 | リクエストに成功したが返却するbodyが存在しない |
@@ -53,8 +53,8 @@ POST /api/auth/login HTTP/1.1
 ### Request
 
 | パラメータ | 内容 | 必須 | デフォルト値 | 最大値 |
-|  email  |  メールアドレス  |  ○  |  -  |  -  |
-| password | パスワード | ○ | - | 256 |
+|  email  |  メールアドレス  |  ○  |  ---  |  ---  |
+| password | パスワード | ○ | --- | 256 |
 
 
 ```
@@ -94,8 +94,8 @@ POST /api/memos HTTP/1.1
 ### Request
 
 | パラメータ | 内容 | 必須 | デフォルト値 | 最大値 |
-| user_id | ユーザID  |  ○  |  -  |  32  |
-| content | メモの内容 | ○ | - | 512 |
+| user_id | ユーザID  |  ○  |  ---  |  32  |
+| content | メモの内容 | ○ | --- | 512 |
 
 
 ```
@@ -132,7 +132,7 @@ GET /api/memos/list/:user_id HTTP/1.1
 ### Request
 
 | パラメータ | 内容 | 必須 | デフォルト値 | 最大値 |
-|  user_id  |  ユーザID  |  ○  |  -  |  32  |
+|  user_id  |  ユーザID  |  ○  |  ---  |  32  |
 
 
 ```
@@ -169,9 +169,9 @@ POST /api/tags/:user_id HTTP/1.1
 ### Request
 
 | パラメータ | 内容 | 必須 | デフォルト値 | 最大値 |
-|  user_id  |  ユーザID  |  ○  |  -  |  32  |
-| name | タグ名 | ○ | - | - |
-| color_code | カラーコード | ○ | - | - |
+|  user_id  |  ユーザID  |  ○  |  ---  |  32  |
+| name | タグ名 | ○ | --- | --- |
+| color_code | カラーコード | ○ | --- | --- |
 
 
 ```
@@ -207,7 +207,7 @@ POST /api/sum/summarize HTTP/1.1
 ### Request
 
 | パラメータ | 内容 | 必須 | デフォルト値 | 最大値 |
-|  memo_ids  |  要約対象のメモID配列  |  ○  |  -  |  -  |
+|  memo_ids  |  要約対象のメモID配列  |  ○  |  ---  |  ---  |
 
 ```
 {
