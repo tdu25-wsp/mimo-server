@@ -1,4 +1,7 @@
-use axum::{Router, http::{Method, header}};
+use axum::{
+    Router,
+    http::{Method, header},
+};
 use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -49,19 +52,13 @@ pub async fn start_server(
             Method::PATCH,
             Method::DELETE,
         ])
-        .allow_headers(vec![
-            header::CONTENT_TYPE,
-            header::ACCEPT,
-        ])
-        .expose_headers(vec![
-            header::CONTENT_TYPE,
-            header::SET_COOKIE,
-        ])
+        .allow_headers(vec![header::CONTENT_TYPE, header::ACCEPT])
+        .expose_headers(vec![header::CONTENT_TYPE, header::SET_COOKIE])
         .max_age(Duration::from_secs(180));
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/api", create_api_routes())
+        .nest("/", create_api_routes())
         //.nest("/share", create_share_routes())
         .with_state(state)
         .layer(cors)
