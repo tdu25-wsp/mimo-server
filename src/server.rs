@@ -58,7 +58,7 @@ pub async fn start_server(
 
     println!("Creating routes...");
     let app = Router::new()
-        .nest("/", create_api_routes())
+        .merge(create_api_routes())
         //.nest("/share", create_share_routes())
         .with_state(state)
         .layer(cors)
