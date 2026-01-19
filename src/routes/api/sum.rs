@@ -29,9 +29,11 @@ async fn summarize_memo(
 ) -> std::result::Result<Json<AISummary>, Response> {
     let authenticated_user_id = state.auth_service.extract_and_verify_user_from_access_token(&jar).await?;
 
+    let is_auto_generated = false;
     let summary = state
         .summary_service
-        .summarize_and_save(authenticated_user_id, req.memo_ids)
+        .summarize_and_save(authenticated_user_id, req.memo_ids, is_auto_generated)
+
         .await.map_err(map_error)?;
 
     Ok(Json(summary))

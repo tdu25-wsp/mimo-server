@@ -47,6 +47,7 @@ impl SummaryService {
         &self,
         user_id: String,
         memo_ids: Vec<String>,
+        is_auto_generated: bool,
     ) -> Result<AISummary> {
         // 0. MemoIDからMemo本体を取得し、user_idでフィルタリング
         let memos = self
@@ -76,7 +77,7 @@ impl SummaryService {
             memo_ids,
             created_at: now,
             updated_at: now,
-            is_auto_generated: true,
+            is_auto_generated: is_auto_generated,
         };
 
         // 3. DBへ保存
