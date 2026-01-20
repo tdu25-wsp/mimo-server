@@ -24,11 +24,13 @@ pub struct MemoList {
 pub struct MemoCreateRequest {
     pub user_id: String,
     pub content: String,
+    pub manual_tag_id: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 pub struct MemoUpdateRequest {
     pub content: String,
+    pub manual_tag_id: Option<Vec<String>>,
 }
 
 #[async_trait::async_trait]

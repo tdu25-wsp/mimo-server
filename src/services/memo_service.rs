@@ -1,6 +1,6 @@
 use crate::{
     error::{AppError, Result},
-    repositories::{Memo, MemoCreateRequest, MemoHandler, MemoRepository},
+    repositories::{Memo, MemoCreateRequest, MemoUpdateRequest, MemoHandler, MemoRepository},
     services::TagService,
 };
 use chrono::Utc;
@@ -51,7 +51,7 @@ impl MemoService {
             content: req.content,
             user_id: req.user_id,
             auto_tag_id,
-            manual_tag_id: None,
+            manual_tag_id: req.manual_tag_id,
             share_url_token: None,
             created_at: now,
             updated_at: now,
@@ -61,16 +61,21 @@ impl MemoService {
     }
 
     // メモの更新機能
-    pub async fn update_content(&self, memo_id: &str, new_content: String) -> Result<Memo> {
+    pub async fn update_memo(&self, memo_id: &str, req: MemoUpdateRequest) -> Result<Memo> {
         let mut memo = self.find_by_id(memo_id).await?;
 
-        validate_memo_content(&new_content)?;
+        validate_memo_content(&req.content)?;
 
-        memo.content = new_content;
+        memo.content = req.content;
         memo.updated_at = Utc::now();
+        
+        if req.manual_tag_id.is_some() {
+            memo.manual_tag_id = req.manual_tag_id;
+        }
 
         self.memo_repo.update(memo).await
     }
+
     pub async fn delete(&self, memo_id: &str) -> Result<()> {
         // 存在確認
         self.find_by_id(memo_id).await?;
