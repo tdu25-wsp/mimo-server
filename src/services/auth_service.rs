@@ -117,12 +117,14 @@ impl AuthService {
         }
 
         // ユーザー存在確認
-        let user_exists = self.auth_repo.find_user_by_email(email).await?.is_some();
+        let user = self.auth_repo.find_user_by_email(email).await?;
+        let user_exists = user.is_some();
+        let user_disabled = user_exists && !user.unwrap().is_active;
 
         if check_user_exists && !user_exists {
             return Err(AppError::NotFound("User not found".to_string()));
         }
-        if !check_user_exists && user_exists {
+        if !check_user_exists && (user_exists || user_disabled) {
             return Err(AppError::ValidationError(
                 "Email address is already in use".to_string(),
             ));

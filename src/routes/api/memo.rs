@@ -85,7 +85,7 @@ async fn update_memo(
         return Err(map_error(AppError::Forbidden("Access denied".to_string())));
     }
 
-    let memo = state.memo_service.update_content(&id, req.content).await.map_err(map_error)?;
+    let memo = state.memo_service.update_memo(&id, req).await.map_err(map_error)?;
     Ok(Json(memo))
 }
 
